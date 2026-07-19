@@ -1,0 +1,44 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Copy production .env for build
+        run: cp /var/www/laravel/cryptor/.env .env
+
+      - name: Install Composer dependencies
+        run: composer install --no-dev --optimize-autoloader
+
+      - name: Install NPM dependencies & build assets
+        run: |
+          npm ci
+          npm run build
+
+      - name: Sync files to deployment path
+        run: |
+          rsync -a --delete \
+            --exclude='.env' \
+            --exclude='.git' \
+            --exclude='storage/' \
+            --exclude='bootstrap/cache/' \
+            --exclude='node_modules/' \
+            ./ /var/www/laravel/cryptor/
+
+      - name: Run deployment tasks
+        run: |
+          cd /var/www/laravel/cryptor
+          php artisan migrate --force
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+          sudo systemctl reload php8.4-fpm
+          sudo systemctl reload nginx
