@@ -76,10 +76,16 @@ const features = [
 <nav class="fixed top-0 w-full bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 z-50">
     <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
 
-        <div class="flex items-center gap-2">
+        <!-- <div class="flex items-center gap-2">
             <Shield class="h-7 w-7 text-gray-800 dark:text-white" />
             <span class="font-semibold text-lg text-gray-800 dark:text-white">Cryptor</span>
-        </div>
+        </div> -->
+         <Link href="/" class="flex items-center gap-2">
+            <Shield class="h-7 w-7 text-gray-800 dark:text-white" />
+            <span class="font-semibold text-lg text-gray-800 dark:text-white">
+                Cryptor
+            </span>
+        </Link>
 
         <div class="hidden md:flex items-center gap-8">
             <a href="#home" class="text-sm text-gray-600 dark:text-gray-300 hover:text-black dark:hover:text-white">Accueil</a>
