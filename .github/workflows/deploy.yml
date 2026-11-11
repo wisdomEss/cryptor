@@ -6,7 +6,8 @@ on:
 
 # Dépôt public + runner self-hosted : ne jamais ajouter de trigger
 # `pull_request` / `pull_request_target` sur ce workflow (exécution de code
-# de forks sur le serveur). Le jeton GITHUB_TOKEN est limité à la lecture.
+# de forks sur le serveur). Les tests des PR vivent dans ci.yml (runner GitHub).
+# Le jeton GITHUB_TOKEN est limité à la lecture.
 permissions:
   contents: read
 
@@ -15,63 +16,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          extensions: mbstring, dom, fileinfo, sqlite3, pdo_sqlite, openssl
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Copy .env
-        run: cp .env.example .env
-
-      - name: Install Composer dependencies
-        run: composer install --prefer-dist --no-interaction
-
-      - name: Generate app key
-        run: php artisan key:generate
-
-      - name: Install NPM dependencies
-        run: npm ci
-
-      - name: Lint PHP (Pint)
-        run: vendor/bin/pint --test
-
-      # Doit précéder ESLint : `import/order` a besoin que `@/routes` et
-      # `@/actions` (ignorés par git) existent pour les classer comme en local.
-      - name: Generate Wayfinder routes/actions
-        run: php artisan wayfinder:generate --with-form
-
-      - name: Lint JS/Vue (ESLint)
-        # `npm run lint` auto-fixes (--fix); here we only want to check.
-        run: npx eslint .
-
-      - name: Typecheck (vue-tsc)
-        run: npx vue-tsc --noEmit
-
-      # Doit précéder les tests : les pages Inertia lisent public/build/manifest.json.
-      - name: Build assets
-        run: npm run build
-
-      - name: Run PHP test suite
-        run: php artisan test
-        env:
-          DB_CONNECTION: sqlite
-          DB_DATABASE: ':memory:'
+  ci:
+    uses: ./.github/workflows/ci.yml
 
   deploy:
-    needs: test
+    needs: ci
     runs-on: self-hosted
 
     steps:
