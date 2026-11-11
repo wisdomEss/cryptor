@@ -11,7 +11,6 @@ import {
     Menu,
     X,
     Mail,
-    Phone,
     MapPin
 } from 'lucide-vue-next'
 import { ref } from 'vue'
