@@ -45,7 +45,11 @@ class PolicyTest extends TestCase
         $this->post(route('keys.deactivate', $key->id))->assertNotFound();
         $this->delete(route('keys.destroy', $key->id))->assertNotFound();
 
-        $this->post(route('keys.download-private', $key->id), ['password' => 'password'])->assertNotFound();
+        $this->postJson(route('keys.export.backup', $key->id), [
+            'password' => 'password',
+            'passphrase' => 'une phrase secrete longue',
+            'passphrase_confirmation' => 'une phrase secrete longue',
+        ])->assertNotFound();
 
         $this->assertDatabaseHas('key_pairs', ['id' => $key->id, 'is_revoked' => false, 'is_active' => true]);
     }

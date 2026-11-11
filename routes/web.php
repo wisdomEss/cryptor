@@ -96,9 +96,6 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/keys/{key}/download', [KeyController::class, 'download'])
         ->name('keys.download');
 
-    Route::post('/keys/{key}/download-private', [KeyController::class, 'downloadPrivate'])
-        ->name('keys.download-private');
-
     Route::post('/keys/{key}/export/backup', [KeyController::class, 'exportBackup'])
         ->middleware('throttle:5,1')
         ->name('keys.export.backup');
