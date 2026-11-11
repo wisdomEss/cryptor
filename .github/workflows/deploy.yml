@@ -48,12 +48,14 @@ jobs:
       - name: Lint PHP (Pint)
         run: vendor/bin/pint --test
 
+      # Doit précéder ESLint : `import/order` a besoin que `@/routes` et
+      # `@/actions` (ignorés par git) existent pour les classer comme en local.
+      - name: Generate Wayfinder routes/actions
+        run: php artisan wayfinder:generate --with-form
+
       - name: Lint JS/Vue (ESLint)
         # `npm run lint` auto-fixes (--fix); here we only want to check.
         run: npx eslint .
-
-      - name: Generate Wayfinder routes/actions
-        run: php artisan wayfinder:generate --with-form
 
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit
