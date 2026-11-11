@@ -104,6 +104,12 @@ jobs:
       - name: Run deployment tasks
         run: |
           cd /var/www/laravel/cryptor
+          # bootstrap/cache n'est pas synchronisé : on retire les caches périmés
+          # (ex. providers de dev comme Pail) puis on les régénère avec le vendor --no-dev.
+          rm -f bootstrap/cache/packages.php bootstrap/cache/services.php \
+                bootstrap/cache/config.php bootstrap/cache/routes-*.php \
+                bootstrap/cache/events.php
+          php artisan package:discover --ansi
           php artisan migrate --force
           php artisan config:cache
           php artisan route:cache
