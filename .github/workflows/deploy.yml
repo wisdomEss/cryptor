@@ -91,7 +91,9 @@ jobs:
 
       - name: Sync files to deployment path
         run: |
-          rsync -a --delete \
+          # -rlt (et non -a) : ne tente pas de recopier propriétaire/groupe/permissions,
+          # ce que l'utilisateur du runner n'a pas le droit de faire (erreurs chgrp).
+          rsync -rlt --no-perms --no-owner --no-group --delete \
             --exclude='.env' \
             --exclude='.git' \
             --exclude='storage/' \
