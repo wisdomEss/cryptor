@@ -12,6 +12,7 @@ import {
     Download,
     Eye,
     MoreHorizontal,
+    Upload,
 } from 'lucide-vue-next';
 import { route as ziggyRoute } from 'ziggy-js';
 import type { Config } from 'ziggy-js';
@@ -157,12 +158,20 @@ const getStatusBadge = (key: Key) => {
                         Manage your cryptographic key pairs
                     </p>
                 </div>
-                <Button as-child>
-                    <Link :href="route('keys.create')">
-                        <Plus class="mr-2 h-4 w-4" />
-                        Generate New Key
-                    </Link>
-                </Button>
+                <div class="flex gap-2">
+                    <Button variant="outline" as-child>
+                        <Link :href="route('keys.import.form')">
+                            <Upload class="mr-2 h-4 w-4" />
+                            Import backup
+                        </Link>
+                    </Button>
+                    <Button as-child>
+                        <Link :href="route('keys.create')">
+                            <Plus class="mr-2 h-4 w-4" />
+                            Generate New Key
+                        </Link>
+                    </Button>
+                </div>
             </div>
 
             <!-- Stats Cards -->
@@ -244,9 +253,7 @@ const getStatusBadge = (key: Key) => {
                 <CardHeader>
                     <CardTitle>All Keys</CardTitle>
                     <CardDescription>
-                        {{ keys.length }} key{{
-                            keys.length !== 1 ? 's' : ''
-                        }}
+                        {{ keys.length }} key{{ keys.length !== 1 ? 's' : '' }}
                         found
                     </CardDescription>
                 </CardHeader>

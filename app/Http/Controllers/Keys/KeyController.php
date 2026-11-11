@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class KeyController extends Controller
@@ -53,8 +54,6 @@ class KeyController extends Controller
             'key_size' => 'required_if:algorithm,rsa|in:2048,4096',
             'valid_days' => 'nullable|integer|min:1|max:3650',
             'set_as_default' => 'boolean',
-            'certificate_data' => 'nullable|string',
-            'certificate_issuer' => 'nullable|string|max:255',
         ]);
 
         // Génération des clés selon l'algorithme choisi
@@ -256,14 +255,32 @@ class KeyController extends Controller
     {
         $key = $this->ownedKey($id, 'update');
 
+        // Le certificat et son émetteur ne se modifient pas : ils sont émis par l'AC.
         $validated = $request->validate([
             'key_name' => 'sometimes|string|max:255',
             'is_default' => 'sometimes|boolean',
             'is_active' => 'sometimes|boolean',
             'valid_to' => 'nullable|date|after:today',
-            'certificate_issuer' => 'nullable|string|max:255',
-            'certificate_data' => 'nullable|string',
         ]);
+
+        if ($key->is_revoked) {
+            return redirect()->back()->with('error', 'A revoked key cannot be modified.');
+        }
+
+        // La validité d'une clé ne peut pas dépasser celle de son certificat.
+        $certificateEnd = $key->certificate_data
+            ? (@openssl_x509_parse($key->certificate_data)['validTo_time_t'] ?? null)
+            : null;
+
+        if ($certificateEnd && array_key_exists('valid_to', $validated)) {
+            if (empty($validated['valid_to'])) {
+                $validated['valid_to'] = Carbon::createFromTimestamp($certificateEnd);
+            } elseif (Carbon::parse($validated['valid_to'])->timestamp > $certificateEnd) {
+                throw ValidationException::withMessages([
+                    'valid_to' => 'The key cannot be valid beyond its certificate ('.Carbon::createFromTimestamp($certificateEnd)->toDateString().').',
+                ]);
+            }
+        }
 
         // Si cette clé devient la clé par défaut
         if (isset($validated['is_default']) && $validated['is_default'] && ! $key->is_default) {
@@ -499,6 +516,122 @@ class KeyController extends Controller
         }
 
         throw new \Exception('Unsupported key type for SSH export');
+    }
+
+    /**
+     * Sauvegarde chiffrée d'une clé : fichier PKCS#12 (.p12) protégé par une phrase secrète,
+     * contenant la clé privée, son certificat et celui de l'AC. Format standard, importable
+     * ailleurs (navigateur, système, openssl) ou dans CRYPTOR (keys.import).
+     */
+    public function exportBackup(Request $request, $id)
+    {
+        $key = $this->ownedKey($id, 'view');
+
+        $request->validate([
+            'password' => 'required|current_password',
+            'passphrase' => 'required|string|min:12|max:255|confirmed',
+        ]);
+
+        if (! $key->certificate_data) {
+            throw ValidationException::withMessages(['password' => 'This key has no certificate to export.']);
+        }
+
+        $ca = app(CertificateAuthority::class);
+
+        $ok = @openssl_pkcs12_export($key->certificate_data, $p12, $key->private_key, $request->passphrase, [
+            'extracerts' => $ca->isIssuedByCa($key->certificate_data) ? [$ca->certificate()] : [],
+            'friendly_name' => $key->key_name,
+        ]);
+
+        if (! $ok) {
+            throw ValidationException::withMessages(['password' => 'The backup could not be generated.']);
+        }
+
+        return response($p12, 200, [
+            'Content-Type' => 'application/x-pkcs12',
+            'Content-Disposition' => 'attachment; filename="'.(Str::slug($key->key_name) ?: 'key').'.p12"',
+            'Cache-Control' => 'no-store',
+        ]);
+    }
+
+    public function importForm()
+    {
+        return Inertia::render('keys/Import');
+    }
+
+    /**
+     * Importe une clé depuis un fichier PKCS#12 (sauvegarde CRYPTOR ou clé externe).
+     */
+    public function import(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|max:64', // Ko : un .p12 de clé + certificats est minuscule
+            'passphrase' => 'required|string|max:255',
+            'key_name' => 'required|string|max:255',
+        ]);
+
+        $bundle = [];
+        $read = @openssl_pkcs12_read((string) file_get_contents($request->file('file')->getRealPath()), $bundle, $request->passphrase);
+        while (openssl_error_string() !== false); // vide la file d'erreurs OpenSSL
+
+        if (! $read || empty($bundle['pkey']) || empty($bundle['cert'])) {
+            throw ValidationException::withMessages([
+                'passphrase' => 'Unable to read this PKCS#12 file: wrong passphrase or unsupported format.',
+            ]);
+        }
+
+        $private = openssl_pkey_get_private($bundle['pkey']);
+        $details = $private ? openssl_pkey_get_details($private) : null;
+
+        if (! $details || ! openssl_x509_check_private_key($bundle['cert'], $bundle['pkey'])) {
+            throw ValidationException::withMessages(['file' => 'The private key does not match the certificate.']);
+        }
+
+        if ($details['type'] === OPENSSL_KEYTYPE_RSA && $details['bits'] >= 2048) {
+            $algorithm = 'rsa';
+        } elseif ($details['type'] === OPENSSL_KEYTYPE_EC && ($details['ec']['curve_name'] ?? null) === 'prime256v1') {
+            $algorithm = 'ecdsa';
+        } else {
+            throw ValidationException::withMessages(['file' => 'Unsupported key (RSA 2048+ or ECDSA P-256 only).']);
+        }
+
+        $cert = openssl_x509_parse($bundle['cert']);
+
+        if (now()->timestamp > $cert['validTo_time_t']) {
+            throw ValidationException::withMessages(['file' => 'This certificate has expired.']);
+        }
+
+        $normalize = fn (string $pem) => preg_replace('/\s+/', '', $pem);
+        $duplicate = KeyPair::where('user_id', Auth::id())->pluck('public_key')
+            ->contains(fn ($existing) => $normalize($existing) === $normalize($details['key']));
+
+        if ($duplicate) {
+            throw ValidationException::withMessages(['file' => 'You already have this key.']);
+        }
+
+        openssl_pkey_export($private, $privatePem);
+
+        $key = KeyPair::create([
+            'user_id' => Auth::id(),
+            'key_name' => $request->key_name,
+            'public_key' => $details['key'],
+            'private_key' => $privatePem,
+            'algorithm_used' => $algorithm,
+            'key_size' => $details['bits'],
+            'key_identifier' => Str::uuid()->toString(),
+            'is_default' => false,
+            'is_active' => true,
+            'is_revoked' => false,
+            'valid_from' => Carbon::createFromTimestamp($cert['validFrom_time_t']),
+            'valid_to' => Carbon::createFromTimestamp($cert['validTo_time_t']),
+            'certificate_data' => $bundle['cert'],
+            'certificate_issuer' => $cert['issuer']['CN'] ?? null,
+            'created_by_ip' => $request->ip(),
+            'created_by_user_agent' => $request->userAgent(),
+        ]);
+
+        return redirect()->route('keys.show', $key->id)
+            ->with('success', 'Key imported successfully.');
     }
 
     /**

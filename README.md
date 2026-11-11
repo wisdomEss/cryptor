@@ -46,11 +46,15 @@ Tout se règle dans `.env` (copie de `.env.example`).
 - **Autorité de certification** : stockée dans `storage/app/private/pki/`. Sauvegardez ce dossier avec `.env`.
 - **Proxy de confiance** : si l'application est derrière un reverse proxy, adaptez `bootstrap/app.php`.
 
-### ⚠️ Sauvegardez `APP_KEY`
+### ⚠️ Sauvegardez `APP_KEY` et vos clés
 
 Les clés privées des utilisateurs sont **chiffrées en base avec `APP_KEY`**. Si cette clé est perdue ou
 régénérée (`php artisan key:generate` sur une base existante), toutes les clés privées deviennent
 **irrécupérables**. Conservez `APP_KEY` dans un gestionnaire de secrets, hors du dépôt.
+
+Chaque utilisateur peut aussi exporter une **sauvegarde chiffrée (.p12)** de sa clé (page de la clé > menu >
+*Export encrypted backup*), protégée par une phrase secrète de 12 caractères minimum, et la restaurer avec
+*Keys > Import backup*. C'est la seule copie qui survit à la perte d'`APP_KEY`.
 
 ## Commandes utiles
 

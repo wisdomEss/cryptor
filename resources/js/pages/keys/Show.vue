@@ -24,10 +24,11 @@ import {
     FileKey,
     History,
 } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { reactive, ref } from 'vue';
 import { route as ziggyRoute } from 'ziggy-js';
 import type { Config } from 'ziggy-js';
 
+import InputError from '@/components/InputError.vue';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -64,6 +65,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { usePostDownload } from '@/composables/usePostDownload';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 
@@ -128,9 +130,12 @@ const revokeForm = useForm({
     reason: '',
 });
 
-// Formulaire de mot de passe pour clé privée
-const passwordForm = useForm({
+// Sauvegarde chiffrée (.p12) : mot de passe du compte + phrase secrète du fichier
+const backup = usePostDownload();
+const backupForm = reactive({
     password: '',
+    passphrase: '',
+    passphrase_confirmation: '',
 });
 
 const copyToClipboard = (text: string) => {
@@ -245,14 +250,19 @@ const handleDeactivate = () => {
     useForm({}).post(route('keys.deactivate', props.keyData.id));
 };
 
-const handleDownloadPrivateKey = () => {
-    passwordForm.post(route('keys.download-private', props.keyData.id), {
-        onSuccess: () => {
-            // Téléchargement géré par le navigateur
-            showPasswordDialog.value = false;
-            passwordForm.reset();
-        },
-    });
+const handleExportBackup = async () => {
+    const ok = await backup.submit(
+        route('keys.export.backup', props.keyData.id),
+        backupForm,
+        'key-backup.p12',
+    );
+
+    if (ok) {
+        showPasswordDialog.value = false;
+        backupForm.password = '';
+        backupForm.passphrase = '';
+        backupForm.passphrase_confirmation = '';
+    }
 };
 
 const status = getStatusBadge();
@@ -358,7 +368,7 @@ const validityStatus = getValidityStatus();
 
                         <DropdownMenuItem @click="showPasswordDialog = true">
                             <Lock class="mr-2 h-4 w-4" />
-                            Download Private Key
+                            Export encrypted backup (.p12)
                         </DropdownMenuItem>
 
                         <DropdownMenuSeparator />
@@ -644,8 +654,7 @@ const validityStatus = getValidityStatus();
                                 <pre
                                     v-if="showPublicKey"
                                     class="overflow-x-auto rounded-lg bg-muted p-4 font-mono text-xs"
-                                    >{{ keyData.public_key }}</pre
-                                >
+                                    >{{ keyData.public_key }}</pre>
                                 <div
                                     v-else
                                     class="rounded-lg bg-muted p-4 text-center text-muted-foreground"
@@ -817,9 +826,10 @@ const validityStatus = getValidityStatus();
                             <Alert>
                                 <AlertTitle>Private key security</AlertTitle>
                                 <AlertDescription>
-                                    Never share your private key. Download it
-                                    now and store it securely. You won't be able
-                                    to download it again later.
+                                    Never share your private key. Keep an
+                                    encrypted backup (.p12) in a safe place: it
+                                    lets you restore this key if the server is
+                                    lost.
                                 </AlertDescription>
                             </Alert>
                             <Button
@@ -828,7 +838,7 @@ const validityStatus = getValidityStatus();
                                 @click="showPasswordDialog = true"
                             >
                                 <Lock class="mr-2 h-4 w-4" />
-                                Download Private Key
+                                Export encrypted backup (.p12)
                             </Button>
                         </CardContent>
                     </Card>
@@ -949,31 +959,67 @@ const validityStatus = getValidityStatus();
                 </DialogContent>
             </Dialog>
 
-            <!-- Password Dialog for Private Key -->
+            <!-- Encrypted backup dialog -->
             <Dialog v-model:open="showPasswordDialog">
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Confirm Password</DialogTitle>
+                        <DialogTitle>Export encrypted backup</DialogTitle>
                         <DialogDescription>
-                            Please enter your password to download the private
-                            key.
+                            The backup (.p12) contains your private key and its
+                            certificate, protected by a passphrase you choose.
+                            Without the passphrase it cannot be opened, and we
+                            cannot recover it for you.
                         </DialogDescription>
                     </DialogHeader>
-                    <form @submit.prevent="handleDownloadPrivateKey">
+                    <form @submit.prevent="handleExportBackup">
                         <div class="space-y-4 py-4">
                             <div class="space-y-2">
-                                <Label for="password">Password</Label>
+                                <Label for="backup-password"
+                                    >Your account password</Label
+                                >
                                 <Input
-                                    id="password"
+                                    id="backup-password"
                                     type="password"
-                                    v-model="passwordForm.password"
-                                    placeholder="Enter your password"
+                                    autocomplete="current-password"
+                                    v-model="backupForm.password"
                                 />
-                                <p class="text-xs text-muted-foreground">
-                                    Your private key is encrypted and requires
-                                    your password to decrypt.
-                                </p>
+                                <InputError
+                                    :message="backup.errors.value.password"
+                                />
                             </div>
+                            <div class="space-y-2">
+                                <Label for="backup-passphrase"
+                                    >Backup passphrase</Label
+                                >
+                                <Input
+                                    id="backup-passphrase"
+                                    type="password"
+                                    autocomplete="new-password"
+                                    minlength="12"
+                                    v-model="backupForm.passphrase"
+                                    placeholder="At least 12 characters"
+                                />
+                                <InputError
+                                    :message="backup.errors.value.passphrase"
+                                />
+                            </div>
+                            <div class="space-y-2">
+                                <Label for="backup-passphrase-confirmation"
+                                    >Confirm passphrase</Label
+                                >
+                                <Input
+                                    id="backup-passphrase-confirmation"
+                                    type="password"
+                                    autocomplete="new-password"
+                                    v-model="backupForm.passphrase_confirmation"
+                                />
+                            </div>
+                            <p
+                                v-if="backup.message.value"
+                                class="text-sm text-destructive"
+                            >
+                                {{ backup.message.value }}
+                            </p>
                         </div>
                         <DialogFooter>
                             <Button
@@ -985,10 +1031,10 @@ const validityStatus = getValidityStatus();
                             </Button>
                             <Button
                                 type="submit"
-                                :disabled="passwordForm.processing"
+                                :disabled="backup.processing.value"
                             >
                                 <Lock class="mr-2 h-4 w-4" />
-                                Download Private Key
+                                Download backup
                             </Button>
                         </DialogFooter>
                     </form>

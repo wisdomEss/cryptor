@@ -72,6 +72,13 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/keys/revoked', [KeyController::class, 'revoked'])
         ->name('keys.revoked');
 
+    Route::get('/keys/import', [KeyController::class, 'importForm'])
+        ->name('keys.import.form');
+
+    Route::post('/keys/import', [KeyController::class, 'import'])
+        ->middleware('throttle:10,1')
+        ->name('keys.import');
+
     Route::resource('keys', KeyController::class);
 
     Route::post('/keys/{key}/revoke', [KeyController::class, 'revoke'])
@@ -91,6 +98,10 @@ Route::middleware(['auth'])->group(function () {
 
     Route::post('/keys/{key}/download-private', [KeyController::class, 'downloadPrivate'])
         ->name('keys.download-private');
+
+    Route::post('/keys/{key}/export/backup', [KeyController::class, 'exportBackup'])
+        ->middleware('throttle:5,1')
+        ->name('keys.export.backup');
 
     Route::get('/keys/{key}/export/pem', [KeyController::class, 'exportPem'])
         ->name('keys.export.pem');

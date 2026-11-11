@@ -18,7 +18,6 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 
@@ -39,7 +38,6 @@ interface KeyEditData {
     is_revoked: boolean;
     valid_to?: string | null;
     certificate_issuer?: string | null;
-    certificate_data?: string | null;
 }
 
 const props = defineProps<{
@@ -60,8 +58,6 @@ const form = useForm({
     key_name: props.keyData.key_name,
     is_default: props.keyData.is_default,
     valid_to: props.keyData.valid_to ?? '',
-    certificate_issuer: props.keyData.certificate_issuer ?? '',
-    certificate_data: props.keyData.certificate_data ?? '',
 });
 
 const submit = () => {
@@ -130,6 +126,11 @@ const submit = () => {
 
                         <div class="space-y-2">
                             <Label for="valid_to">Valid until</Label>
+                            <p class="text-xs text-muted-foreground">
+                                You can shorten the validity, not extend it
+                                beyond the certificate. Leave empty to use the
+                                certificate's expiry.
+                            </p>
                             <Input
                                 id="valid_to"
                                 v-model="form.valid_to"
@@ -138,33 +139,17 @@ const submit = () => {
                             <InputError :message="form.errors.valid_to" />
                         </div>
 
-                        <div class="space-y-2">
-                            <Label for="certificate_issuer"
-                                >Certificate issuer</Label
-                            >
-                            <Input
-                                id="certificate_issuer"
-                                v-model="form.certificate_issuer"
-                                maxlength="255"
-                            />
-                            <InputError
-                                :message="form.errors.certificate_issuer"
-                            />
-                        </div>
-
-                        <div class="space-y-2">
-                            <Label for="certificate_data"
-                                >Certificate data (PEM)</Label
-                            >
-                            <Textarea
-                                id="certificate_data"
-                                v-model="form.certificate_data"
-                                rows="6"
-                                class="font-mono text-xs"
-                            />
-                            <InputError
-                                :message="form.errors.certificate_data"
-                            />
+                        <div class="space-y-2 rounded-lg border p-4">
+                            <Label>Certificate</Label>
+                            <p class="text-sm text-muted-foreground">
+                                Issued by
+                                <span class="font-medium text-foreground">{{
+                                    keyData.certificate_issuer ?? 'unknown'
+                                }}</span>. The certificate and its issuer are
+                                set by the certificate authority and cannot be
+                                edited. The key can never be valid beyond its
+                                certificate.
+                            </p>
                         </div>
                     </CardContent>
 
