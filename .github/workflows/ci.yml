@@ -28,6 +28,7 @@ jobs:
         with:
           php-version: '8.4'
           extensions: mbstring, dom, fileinfo, sqlite3, pdo_sqlite, openssl
+          coverage: pcov
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -65,8 +66,24 @@ jobs:
       - name: Build assets
         run: npm run build
 
-      - name: Run PHP test suite
-        run: php artisan test
+      - name: Run PHP test suite (with coverage)
+        run: vendor/bin/phpunit --coverage-clover=coverage.xml
         env:
           DB_CONNECTION: sqlite
           DB_DATABASE: ':memory:'
+
+      # Seuil réglable sans commit : Settings > Secrets and variables > Actions > Variables > COVERAGE_MIN.
+      # Absent ou 0 : le rapport est publié mais ne bloque rien.
+      - name: Coverage summary and threshold
+        run: php scripts/coverage-check.php coverage.xml "${COVERAGE_MIN:-0}" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          COVERAGE_MIN: ${{ vars.COVERAGE_MIN }}
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+          retention-days: 7
+          if-no-files-found: ignore
