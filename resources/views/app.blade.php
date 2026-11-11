@@ -2,13 +2,13 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
 
 <head>
-    @routes
+    @routes(null, Vite::cspNonce())
     @vite('resources/js/app.ts')
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     {{-- Inline script to detect system dark mode preference and apply it immediately --}}
-    <script>
+    <script nonce="{{ Vite::cspNonce() }}">
         (function () {
             const appearance = '{{ $appearance ?? "system" }}';
 

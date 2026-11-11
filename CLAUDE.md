@@ -93,3 +93,15 @@ La suite (pint, eslint, vue-tsc, `php artisan test`, `npm run build`) est entiè
 - `zod` et `@vee-validate/zod` ont été supprimés (jamais utilisés) ; seul `vee-validate` reste.
 - `package.json` contient un override `@typescript-eslint/typescript-estree.minimatch ^11.0.1` (correctif DoS) : à retirer quand `typescript-eslint` publiera une version corrigée.
 - Laravel reste en 12.x ; les changements de version majeure (Laravel 13, PHPUnit 13, Inertia 3, vue-tsc, etc.) sont à traiter à part.
+
+### Chantier « PKI standard » (démarré le 2026-11-11)
+
+Contrainte directrice : **tout le monde doit pouvoir cloner et utiliser le projet** (`composer setup` + `composer dev`, SQLite par défaut, aucun service ni secret externe obligatoire).
+
+- [x] Phase 1 — installation reproductible (README, `composer setup` idempotent, paquet npm `node` retiré), en-têtes de sécurité (`SecurityHeaders`, CSP avec nonce Vite/Ziggy), SAST (`.github/workflows/security.yml` : CodeQL + Semgrep).
+- [ ] Phase 2 — extraire la vérification dans un service unique (fin de la duplication `VerificationController` / `PublicSignaturesController`) + Policies (`KeyPair`, `Signature`, `FileSigned`, `SignatureVerification`).
+- [ ] Phase 3 — vraies signatures CMS détachées via `openssl_cms_sign/verify` (déjà dispo dans PHP, aucune dépendance) ; compatibilité avec l'ancien JSON conservée en lecture seule.
+- [ ] Phase 4 — AC interne auto-initialisée (`cryptor:ca-init`, générée au premier usage), certificats signés par l'AC, validation de chaîne, liste de révocation publique.
+- [ ] Phase 5 — horodatage RFC 3161 optionnel (`TSA_URL` dans `.env`, désactivé par défaut) ; PAdES réel hors périmètre sans bibliothèque PDF dédiée (retirer l'exemple `byteRange` factice).
+- [ ] Phase 6 — pages `keys/Edit` et `keys/Revoke` complètes ; export sauvegarde d'une clé privée chiffrée par passphrase (PKCS#8) pour ne plus dépendre uniquement d'`APP_KEY`.
+- [ ] Phase 7 — couverture de tests mesurée en CI (pcov) avec seuil minimal.
