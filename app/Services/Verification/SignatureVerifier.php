@@ -318,21 +318,6 @@ class SignatureVerifier
         return null;
     }
 
-    /** Empreinte courte d'une clé publique (16 caractères hexadécimaux). */
-    public function fingerprint(string $publicKey): string
-    {
-        $key = preg_replace('/-----(BEGIN|END) (PUBLIC|PRIVATE) KEY-----/', '', $publicKey);
-        $key = preg_replace('/\s+/', '', (string) $key);
-
-        return substr(hash('sha256', (string) $key), 0, 16);
-    }
-
-    /** Empreinte lisible : `AB:CD:EF:...` (utilisée par la page publique). */
-    public function formattedFingerprint(string $publicKey): string
-    {
-        return implode(':', str_split(strtoupper($this->fingerprint($publicKey)), 2));
-    }
-
     /**
      * État de l'horodatage d'une signature.
      *
