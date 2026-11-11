@@ -143,3 +143,13 @@ Contrainte directrice : **tout le monde doit pouvoir cloner et utiliser le proje
 - **Appel à l'autorité d'horodatage (jusqu'à 10 s) dans la transaction SQL** → déplacé avant.
 - **Fichiers orphelins** (document ou `.p7s` écrit puis transaction annulée) → nettoyés ; suppression de signature : fichiers effacés après le commit.
 - Nom de fichier stocké : extension nettoyée (`[A-Za-z0-9]`), plus de point final ; hachage SHA-256/512/MD5 en une seule lecture ; signature visuelle : émetteur réel du certificat au lieu de « Self-signed » ; `edit()` n'envoie plus le PEM du certificat au front.
+
+### Confirmation de l'adresse e-mail (2026-11-12)
+
+- `User` implémente `MustVerifyEmail`. **Avant, il ne l'implémentait pas** : le middleware `verified` ne bloque que les utilisateurs de cette interface, donc il ne faisait rien nulle part (tableau de bord compris). Toute route qui doit exiger une adresse confirmée utilise `verified`.
+- L'alias `verified` est remplacé (`bootstrap/app.php`) par `App\Http\Middleware\EnsureVerifiedEmail`, piloté par `config('cryptor.require_verified_email')` (`CRYPTOR_REQUIRE_VERIFIED_EMAIL`, défaut `true`), lu à chaque requête (compatible `route:cache`).
+- Groupe principal de `routes/web.php` : `['auth', 'verified']`. Restent accessibles sans confirmation : page de vérification, renvoi du lien, `settings/profile` (corriger son adresse), déconnexion, et tout le public (`/`, `/verifications/public`, `/api/public/verify`, `/pki/*`).
+- Changer d'adresse annule la confirmation **et** renvoie le lien (`ProfileController@update`).
+- Migration `2026_11_12_100000_mark_existing_users_as_verified` : les comptes existants (créés sans confirmation) sont marqués confirmés, sinon tout le monde serait bloqué au déploiement. Irréversible.
+- `php artisan cryptor:verify-user {email?} {--all}` : confirmation manuelle (essai local, dépannage).
+- Les tests qui créent des utilisateurs avec `User::factory()` obtiennent des comptes **confirmés** ; utiliser `->unverified()` pour tester l'inverse.

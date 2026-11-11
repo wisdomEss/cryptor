@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureVerifiedEmail;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\SecurityHeaders;
@@ -17,6 +18,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
+
+        // `verified` est remplacé par une version pilotée par cryptor.require_verified_email.
+        $middleware->alias(['verified' => EnsureVerifiedEmail::class]);
 
         $middleware->append(SecurityHeaders::class);
 

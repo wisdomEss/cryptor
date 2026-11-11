@@ -53,4 +53,22 @@ return [
         'timeout' => (int) env('CRYPTOR_TSA_TIMEOUT', 10),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Adresse e-mail vérifiée obligatoire
+    |--------------------------------------------------------------------------
+    |
+    | Activé : un compte doit avoir confirmé son adresse (lien reçu par e-mail) pour
+    | utiliser clés, signatures et vérifications. Il peut toujours consulter la page de
+    | vérification, renvoyer le lien, corriger son adresse et se déconnecter.
+    |
+    | Exige un vrai serveur d'e-mail (MAIL_*). Pour un essai local avec MAIL_MAILER=log,
+    | le lien est écrit dans storage/logs/laravel.log, ou on valide un compte à la main :
+    |   php artisan cryptor:verify-user adresse@exemple.org
+    |
+    | Mettre à false uniquement pour une instance privée sans serveur d'e-mail.
+    |
+    */
+    'require_verified_email' => (bool) env('CRYPTOR_REQUIRE_VERIFIED_EMAIL', true),
+
 ];

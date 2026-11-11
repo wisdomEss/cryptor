@@ -43,6 +43,11 @@ Tout se règle dans `.env` (copie de `.env.example`).
   `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, puis `php artisan migrate`.
 - **E-mails** : par défaut `MAIL_MAILER=log` (les e-mails de vérification et de réinitialisation sont écrits
   dans `storage/logs/laravel.log`). Configurez un vrai SMTP pour les envoyer.
+- **Confirmation de l'adresse e-mail** : obligatoire par défaut. Un compte non confirmé ne peut utiliser ni clés,
+  ni signatures, ni vérifications (il peut renvoyer le lien, corriger son adresse et se déconnecter). En essai
+  local sans serveur d'e-mail, ouvrez le lien dans `storage/logs/laravel.log` ou lancez
+  `php artisan cryptor:verify-user adresse@exemple.org` (`--all` pour tous les comptes). Pour une instance privée
+  sans e-mail : `CRYPTOR_REQUIRE_VERIFIED_EMAIL=false`.
 - **Autorité de certification** : stockée dans `storage/app/private/pki/`. Sauvegardez ce dossier avec `.env`.
 - **Proxy de confiance** : si l'application est derrière un reverse proxy, adaptez `bootstrap/app.php`.
 
@@ -136,7 +141,7 @@ Dans le `.env` **du serveur** (jamais dans le dépôt) :
 | `APP_URL` | `https://votre-domaine` | liens et cookies |
 | `SESSION_SECURE_COOKIE` | `true` | cookie de session envoyé uniquement en HTTPS |
 | `DB_CONNECTION` | `mysql` (+ `DB_*`) | testé en CI sur MySQL 8 |
-| `MAIL_*` | un vrai SMTP | sinon les e-mails de vérification restent dans les logs |
+| `MAIL_*` | un vrai SMTP | **indispensable** : sans lui, aucun nouveau compte ne peut confirmer son adresse |
 
 Sauvegardez `.env` **et** `storage/app/private/` (documents, signatures, autorité de certification), et lancez
 artisan avec l'utilisateur du serveur web (`sudo -u www-data php artisan ...`), jamais en root.
