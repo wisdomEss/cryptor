@@ -170,3 +170,10 @@ Symptôme en production : page blanche, console pleine de « Mixed Content » et
 - Sources CSP supplémentaires **filtrées** (`https://hôte` uniquement, pas de `*`, `data:`, `'unsafe-*'`) : `CRYPTOR_CSP_SCRIPT_SRC`, `CRYPTOR_CSP_CONNECT_SRC`. `static.cloudflareinsights.com` (analytique Cloudflare) est bloqué par la CSP tant qu'on ne l'autorise pas ou qu'on ne la désactive pas côté Cloudflare.
 - Fichier statique `resources/js/ziggy.js` **supprimé** (il figeait `http://localhost:8000`) ; `app.ts` fait `.use(ZiggyVue)` sans configuration et lit celle de `@routes`.
 - Dans les tests, `BladeRouteGenerator::$generated` (statique Ziggy) doit être remis à `false` pour que `@routes` régénère sa configuration complète.
+
+### 502 sur /login et erreurs 419 : en-têtes trop gros (2026-11-12)
+
+Symptôme en production : `/` répond, `/login` donne « 502 Bad Gateway », puis « 419 Page Expired » à la connexion. Cause : le middleware `AddLinkHeadersForPreloadedAssets` copiait dans un en-tête `Link` la liste des assets préchargés (5,4 Ko sur `/login`) ; les en-têtes de réponse totalisaient ~7,3 Ko, au-dessus du tampon FastCGI de nginx (`fastcgi_buffer_size`, 4 Ko par défaut) → nginx rejette la réponse (« upstream sent too big header »). Comme la réponse est rejetée, les cookies de session et XSRF n'arrivent jamais → 419.
+- Le middleware est **retiré** (Vite met déjà `<link rel="modulepreload">` dans le HTML). Les en-têtes font ~1,8 Ko partout.
+- Garde-fou : `SecurityHeadersTest` vérifie que les en-têtes de `/`, `/login`, `/register`, `/forgot-password` restent sous 3 000 octets en production, et qu'aucun en-tête `Link` n'est émis. **Ne pas réajouter** ce middleware sans augmenter `fastcgi_buffer_size` côté nginx.
+- Mesure rapide : script de sonde (kernel HTTP + `Request::create`) qui somme `strlen` des lignes de `$response->headers`.

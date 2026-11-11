@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Providers\AppServiceProvider;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 use Tighten\Ziggy\BladeRouteGenerator;
 
@@ -200,5 +201,48 @@ class SecurityHeadersTest extends TestCase
         }
         // La source légitime est conservée, et la directive reste stricte (seulement 'self', le nonce et elle).
         $this->assertMatchesRegularExpression("/^default-src 'self'; script-src 'self' 'nonce-[^']+' https:\/\/ok\.example\.org;/", $csp);
+    }
+
+    // ------------------------------------------------ taille des en-têtes (502 nginx)
+
+    /** Octets occupés par les en-têtes de réponse, cookies compris. */
+    private function headerBytes($response): int
+    {
+        $bytes = 0;
+
+        foreach (explode("\r\n", (string) $response->baseResponse->headers) as $line) {
+            if ($line !== '' && ! str_starts_with($line, 'HTTP/')) {
+                $bytes += strlen($line) + 2;
+            }
+        }
+
+        return $bytes;
+    }
+
+    /** @return array<string, array{0: string}> */
+    public static function pages(): array
+    {
+        return ['accueil' => ['/'], 'connexion' => ['/login'], 'inscription' => ['/register'], 'mot de passe oublié' => ['/forgot-password']];
+    }
+
+    #[DataProvider('pages')]
+    public function test_response_headers_stay_well_below_the_default_nginx_buffer(string $path): void
+    {
+        // Production, HTTPS forcé, cookies de session chiffrés : le pire cas.
+        $this->enableForceHttps();
+        $this->app['env'] = 'production';
+
+        $response = $this->get($path);
+
+        // nginx rejette (502) toute réponse dont les en-têtes dépassent fastcgi_buffer_size (4 Ko par défaut).
+        $this->assertLessThan(3000, $this->headerBytes($response), "En-têtes de {$path} trop volumineux pour le tampon nginx par défaut.");
+        $this->assertFalse($response->headers->has('Link'), 'Aucun en-tête Link de préchargement : Vite met déjà les <link> dans le HTML.');
+    }
+
+    public function test_assets_are_still_preloaded_through_the_html(): void
+    {
+        $html = $this->get('/login')->getContent();
+
+        $this->assertStringContainsString('rel="modulepreload"', $html);
     }
 }

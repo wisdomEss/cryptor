@@ -7,7 +7,6 @@ use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -24,10 +23,13 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->append(SecurityHeaders::class);
 
+        // AddLinkHeadersForPreloadedAssets est volontairement absent : il recopie dans un en-tête HTTP
+        // `Link` la liste des fichiers à précharger, que Vite met déjà dans le HTML (<link rel="modulepreload">).
+        // Sur la page de connexion cet en-tête dépassait 5 Ko : nginx (tampon FastCGI de 4 Ko par défaut)
+        // répondait « 502 Bad Gateway » et les cookies de session n'arrivaient jamais (d'où des erreurs 419).
         $middleware->web(append: [
             HandleAppearance::class,
             HandleInertiaRequests::class,
-            AddLinkHeadersForPreloadedAssets::class,
         ]);
 
         // Proxies dont on accepte les en-têtes X-Forwarded-* (IP réelle du client, schéma HTTPS).
