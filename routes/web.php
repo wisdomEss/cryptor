@@ -1,10 +1,11 @@
 <?php
 
+use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\Files\FileController;
 use App\Http\Controllers\Keys\KeyController;
 use App\Http\Controllers\PublicSignatures\PublicSignaturesController;
 use App\Http\Controllers\Signatures\SignatureController;
 use App\Http\Controllers\Verifications\VerificationController;
-use App\Http\Controllers\Dashboard\DashboardController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -21,7 +22,6 @@ Route::get('/', function () {
     ]);
 })->name('home');
 
-
 /*
 |--------------------------------------------------------------------------
 | Routes Publiques
@@ -33,7 +33,6 @@ Route::get('/verifications/public', [PublicSignaturesController::class, 'index']
     ->name('verifications.public')
     ->middleware('throttle:30,1');
 
-
 /*
 |--------------------------------------------------------------------------
 | Dashboard (protégé)
@@ -43,7 +42,6 @@ Route::get('/verifications/public', [PublicSignaturesController::class, 'index']
 Route::get('/dashboard', [DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
-
 
 /*
 |--------------------------------------------------------------------------
@@ -59,10 +57,12 @@ Route::middleware(['auth'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::resource('keys', KeyController::class);
-
+    // Routes littérales à déclarer avant Route::resource, sinon elles sont
+    // capturées par keys.show (GET /keys/{key}).
     Route::get('/keys/revoked', [KeyController::class, 'revoked'])
         ->name('keys.revoked');
+
+    Route::resource('keys', KeyController::class);
 
     Route::post('/keys/{key}/revoke', [KeyController::class, 'revoke'])
         ->name('keys.revoke');
@@ -88,15 +88,13 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/keys/{key}/export/ssh', [KeyController::class, 'exportSsh'])
         ->name('keys.export.ssh');
 
-
     /*
     |--------------------------------------------------------------------------
     | Signatures
     |--------------------------------------------------------------------------
     */
 
-    Route::resource('signatures', SignatureController::class);
-
+    // Idem : ces routes littérales doivent précéder Route::resource.
     Route::get('/signatures/pending', [SignatureController::class, 'pending'])
         ->name('signatures.pending');
 
@@ -106,14 +104,23 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/signatures/expired', [SignatureController::class, 'expired'])
         ->name('signatures.expired');
 
+    Route::resource('signatures', SignatureController::class);
+
     Route::post('/signatures/{signature}/revoke', [SignatureController::class, 'revoke'])
         ->name('signatures.revoke');
 
-    // ✅ correction : plus de conflit avec resource update
-    Route::patch('/signatures/{signature}/validate', 
-        [SignatureController::class, 'validateSignature']
-    )->name('signatures.validate');
+    // La validation réutilise la même logique que la mise à jour (update).
+    Route::patch('/signatures/{signature}/validate', [SignatureController::class, 'update'])
+        ->name('signatures.validate');
 
+    /*
+    |--------------------------------------------------------------------------
+    | Fichiers
+    |--------------------------------------------------------------------------
+    */
+
+    Route::get('/files/{file}/download', [FileController::class, 'download'])
+        ->name('files.download');
 
     /*
     |--------------------------------------------------------------------------
@@ -124,6 +131,5 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('verifications', VerificationController::class)
         ->only(['index', 'create', 'store', 'show']);
 });
-
 
 require __DIR__.'/settings.php';

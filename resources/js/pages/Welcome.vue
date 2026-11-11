@@ -1,8 +1,5 @@
 <script setup lang="ts">
 import { Head, Link, usePage } from '@inertiajs/vue3'
-import { route as ziggyRoute } from 'ziggy-js'
-import type { Config } from 'ziggy-js'
-import { ref } from 'vue'
 import {
     Shield,
     KeyRound,
@@ -17,6 +14,9 @@ import {
     Phone,
     MapPin
 } from 'lucide-vue-next'
+import { ref } from 'vue'
+import { route as ziggyRoute } from 'ziggy-js'
+import type { Config } from 'ziggy-js'
 
 const page = usePage()
 const ziggy = page.props.ziggy as Config

@@ -22,15 +22,22 @@ class KeyPair extends Model
         'key_identifier',
         'is_default',
         'is_active',
+        'is_revoked',
+        'revocation_reason',
         'valid_to',
         'certificate_data',
         'certificate_issuer',
-        'valid_from'
+        'valid_from',
+        'last_used',
+        'use_count',
+        'created_by_ip',
+        'created_by_user_agent',
+        'revoked_at',
     ];
 
     protected $hidden = [
         'private_key',
-        'private_key_iv'
+        'private_key_iv',
     ];
 
     protected $casts = [
@@ -41,7 +48,10 @@ class KeyPair extends Model
         'valid_to' => 'datetime',
         'last_used' => 'datetime',
         'revoked_at' => 'datetime',
-        'key_size' => 'integer'
+        'key_size' => 'integer',
+        'use_count' => 'integer',
+        // La clé privée ne doit jamais être stockée en clair en base.
+        'private_key' => 'encrypted',
     ];
 
     // Relations
@@ -61,18 +71,19 @@ class KeyPair extends Model
         return $query->where('is_active', true)->where('is_revoked', false);
     }
 
-public function scopeValid($query)
-{
-    $now = now();
-    return $query
-        ->where('is_active', true)
-        ->where('is_revoked', false)
-        ->where('valid_from', '<=', $now)
-        ->where(function ($q) use ($now) {
-            $q->whereNull('valid_to')
-              ->orWhere('valid_to', '>=', $now);
-        });
-}
+    public function scopeValid($query)
+    {
+        $now = now();
+
+        return $query
+            ->where('is_active', true)
+            ->where('is_revoked', false)
+            ->where('valid_from', '<=', $now)
+            ->where(function ($q) use ($now) {
+                $q->whereNull('valid_to')
+                    ->orWhere('valid_to', '>=', $now);
+            });
+    }
 
     public function scopeDefault($query)
     {
@@ -83,8 +94,9 @@ public function scopeValid($query)
     public function isValid(): bool
     {
         $now = now();
-        return $this->is_active && !$this->is_revoked 
-            && $this->valid_from <= $now 
+
+        return $this->is_active && ! $this->is_revoked
+            && $this->valid_from <= $now
             && ($this->valid_to === null || $this->valid_to >= $now);
     }
 }

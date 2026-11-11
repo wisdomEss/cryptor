@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import AppLayout from '@/layouts/AppLayout.vue';
-import { type BreadcrumbItem } from '@/types';
 import { usePage } from '@inertiajs/vue3';
-import { route as ziggyRoute } from 'ziggy-js';
-import type { Config } from 'ziggy-js';
 import {
     FileSignature,
     Plus,
@@ -15,16 +11,17 @@ import {
     FileText,
     Eye,
     MoreHorizontal,
-    Download,
     AlertCircle,
     User,
     KeyRound,
-    Archive
+    Archive,
 } from 'lucide-vue-next';
+import { route as ziggyRoute } from 'ziggy-js';
+import type { Config } from 'ziggy-js';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -41,11 +38,9 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import {
-    Tabs,
-    TabsList,
-    TabsTrigger,
-} from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { type BreadcrumbItem } from '@/types';
 
 const page = usePage();
 const ziggy = page.props.ziggy as Config;
@@ -91,54 +86,77 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Signatures', href: route('signatures.index') },
 ];
 
-const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-};
-
 const getStatusBadge = (signature: Signature) => {
     if (signature.revoked_at) {
-        return { color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300', label: 'Revoked', icon: Archive };
+        return {
+            color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
+            label: 'Revoked',
+            icon: Archive,
+        };
     }
-    switch(signature.validation_status) {
+    switch (signature.validation_status) {
         case 'invalid':
-            return { color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300', label: 'Invalid', icon: XCircle };
+            return {
+                color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
+                label: 'Invalid',
+                icon: XCircle,
+            };
         case 'pending':
-            return { color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300', label: 'Pending', icon: Clock };
+            return {
+                color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
+                label: 'Pending',
+                icon: Clock,
+            };
         case 'valid':
-            return { color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300', label: 'Valid', icon: CheckCircle2 };
+            return {
+                color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+                label: 'Valid',
+                icon: CheckCircle2,
+            };
         default:
-            return { color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300', label: 'Unknown', icon: AlertCircle };
+            return {
+                color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
+                label: 'Unknown',
+                icon: AlertCircle,
+            };
     }
 };
 
 const getAlgorithmBadge = (algorithm: string) => {
     const algos: Record<string, string> = {
-        'rsa': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-        'ecdsa': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
-        'ed25519': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+        rsa: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+        ecdsa: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
+        ed25519:
+            'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
     };
-    return algos[algorithm.toLowerCase()] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+    return (
+        algos[algorithm.toLowerCase()] ||
+        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+    );
 };
 
 const getFormatBadge = (format: string) => {
     const formats: Record<string, string> = {
-        'pkcs7': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-        'cms': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
-        'pdf': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
+        pkcs7: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+        cms: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
+        pdf: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
     };
-    return formats[format.toLowerCase()] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+    return (
+        formats[format.toLowerCase()] ||
+        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+    );
 };
 
 const getTypeLabel = () => {
-    switch(props.type) {
-        case 'pending': return 'Pending Signatures';
-        case 'revoked': return 'Revoked Signatures';
-        case 'expired': return 'Expired Signatures';
-        default: return 'All Signatures';
+    switch (props.type) {
+        case 'pending':
+            return 'Pending Signatures';
+        case 'revoked':
+            return 'Revoked Signatures';
+        case 'expired':
+            return 'Expired Signatures';
+        default:
+            return 'All Signatures';
     }
 };
 </script>
@@ -151,7 +169,9 @@ const getTypeLabel = () => {
             <!-- Header -->
             <div class="flex items-center justify-between">
                 <div>
-                    <h1 class="text-2xl font-bold tracking-tight">{{ getTypeLabel() }}</h1>
+                    <h1 class="text-2xl font-bold tracking-tight">
+                        {{ getTypeLabel() }}
+                    </h1>
                     <p class="text-sm text-muted-foreground">
                         Manage your digital signatures
                     </p>
@@ -168,25 +188,37 @@ const getTypeLabel = () => {
             <Tabs :default-value="type || 'all'" class="w-full">
                 <TabsList class="grid w-full grid-cols-4">
                     <TabsTrigger value="all" as-child>
-                        <Link :href="route('signatures.index')" class="flex items-center gap-2">
+                        <Link
+                            :href="route('signatures.index')"
+                            class="flex items-center gap-2"
+                        >
                             <FileSignature class="h-4 w-4" />
                             All
                         </Link>
                     </TabsTrigger>
                     <TabsTrigger value="pending" as-child>
-                        <Link :href="route('signatures.pending')" class="flex items-center gap-2">
+                        <Link
+                            :href="route('signatures.pending')"
+                            class="flex items-center gap-2"
+                        >
                             <Clock class="h-4 w-4" />
                             Pending
                         </Link>
                     </TabsTrigger>
                     <TabsTrigger value="revoked" as-child>
-                        <Link :href="route('signatures.revoked')" class="flex items-center gap-2">
+                        <Link
+                            :href="route('signatures.revoked')"
+                            class="flex items-center gap-2"
+                        >
                             <Archive class="h-4 w-4" />
                             Revoked
                         </Link>
                     </TabsTrigger>
                     <TabsTrigger value="expired" as-child>
-                        <Link :href="route('signatures.expired')" class="flex items-center gap-2">
+                        <Link
+                            :href="route('signatures.expired')"
+                            class="flex items-center gap-2"
+                        >
                             <AlertCircle class="h-4 w-4" />
                             Expired
                         </Link>
@@ -197,13 +229,27 @@ const getTypeLabel = () => {
             <!-- Stats Card -->
             <Card>
                 <CardHeader class="pb-3">
-                    <CardTitle class="text-sm font-medium">Total Signatures</CardTitle>
+                    <CardTitle class="text-sm font-medium"
+                        >Total Signatures</CardTitle
+                    >
                 </CardHeader>
                 <CardContent>
-                    <div class="text-2xl font-bold">{{ signatures.length }}</div>
-                    <p class="text-xs text-muted-foreground mt-1">
-                        {{ signatures.filter(s => s.validation_status === 'valid').length }} valid,
-                        {{ signatures.filter(s => s.validation_status === 'pending').length }} pending
+                    <div class="text-2xl font-bold">
+                        {{ signatures.length }}
+                    </div>
+                    <p class="mt-1 text-xs text-muted-foreground">
+                        {{
+                            signatures.filter(
+                                (s) => s.validation_status === 'valid',
+                            ).length
+                        }}
+                        valid,
+                        {{
+                            signatures.filter(
+                                (s) => s.validation_status === 'pending',
+                            ).length
+                        }}
+                        pending
                     </p>
                 </CardContent>
             </Card>
@@ -223,38 +269,72 @@ const getTypeLabel = () => {
                                 <TableHead>Signed At</TableHead>
                                 <TableHead>Format</TableHead>
                                 <TableHead>Verif.</TableHead>
-                                <TableHead class="text-right">Actions</TableHead>
+                                <TableHead class="text-right"
+                                    >Actions</TableHead
+                                >
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             <TableRow v-if="signatures.length === 0">
                                 <TableCell colspan="7" class="h-32 text-center">
-                                    <div class="flex flex-col items-center justify-center text-muted-foreground">
-                                        <FileSignature class="h-8 w-8 mb-2 opacity-50" />
+                                    <div
+                                        class="flex flex-col items-center justify-center text-muted-foreground"
+                                    >
+                                        <FileSignature
+                                            class="mb-2 h-8 w-8 opacity-50"
+                                        />
                                         <p>No signatures found</p>
-                                        <Button variant="link" as-child class="mt-2">
-                                            <Link :href="route('signatures.create')">Sign your first document</Link>
+                                        <Button
+                                            variant="link"
+                                            as-child
+                                            class="mt-2"
+                                        >
+                                            <Link
+                                                :href="
+                                                    route('signatures.create')
+                                                "
+                                                >Sign your first document</Link
+                                            >
                                         </Button>
                                     </div>
                                 </TableCell>
                             </TableRow>
 
-                            <TableRow v-for="signature in signatures" :key="signature.id">
+                            <TableRow
+                                v-for="signature in signatures"
+                                :key="signature.id"
+                            >
                                 <TableCell>
                                     <div class="flex flex-col">
                                         <div class="flex items-center gap-2">
-                                            <FileText class="h-4 w-4 text-muted-foreground shrink-0" />
-                                            <span class="font-medium truncate max-w-[200px]">
-                                                {{ signature.file.original_file_name }}
+                                            <FileText
+                                                class="h-4 w-4 shrink-0 text-muted-foreground"
+                                            />
+                                            <span
+                                                class="max-w-[200px] truncate font-medium"
+                                            >
+                                                {{
+                                                    signature.file
+                                                        .original_file_name
+                                                }}
                                             </span>
                                         </div>
-                                        <div class="flex items-center gap-1 mt-1">
-                                            <User class="h-3 w-3 text-muted-foreground" />
-                                            <span class="text-xs text-muted-foreground truncate max-w-[150px]">
+                                        <div
+                                            class="mt-1 flex items-center gap-1"
+                                        >
+                                            <User
+                                                class="h-3 w-3 text-muted-foreground"
+                                            />
+                                            <span
+                                                class="max-w-[150px] truncate text-xs text-muted-foreground"
+                                            >
                                                 {{ signature.signer.name }}
                                             </span>
                                         </div>
-                                        <span v-if="signature.signing_reason" class="text-xs text-muted-foreground mt-1 truncate max-w-[200px]">
+                                        <span
+                                            v-if="signature.signing_reason"
+                                            class="mt-1 max-w-[200px] truncate text-xs text-muted-foreground"
+                                        >
                                             {{ signature.signing_reason }}
                                         </span>
                                     </div>
@@ -262,36 +342,61 @@ const getTypeLabel = () => {
 
                                 <TableCell>
                                     <div class="flex flex-col gap-1">
-                                        <Badge :class="getAlgorithmBadge(signature.algorithm_used)">
+                                        <Badge
+                                            :class="
+                                                getAlgorithmBadge(
+                                                    signature.algorithm_used,
+                                                )
+                                            "
+                                        >
                                             {{ signature.algorithm_used }}
                                         </Badge>
-                                        <span class="text-xs text-muted-foreground">
+                                        <span
+                                            class="text-xs text-muted-foreground"
+                                        >
                                             {{ signature.key_pair.key_name }}
                                         </span>
                                     </div>
                                 </TableCell>
 
                                 <TableCell>
-                                    <Badge :class="getStatusBadge(signature).color">
-                                        <component :is="getStatusBadge(signature).icon" class="h-3 w-3 mr-1" />
+                                    <Badge
+                                        :class="getStatusBadge(signature).color"
+                                    >
+                                        <component
+                                            :is="getStatusBadge(signature).icon"
+                                            class="mr-1 h-3 w-3"
+                                        />
                                         {{ getStatusBadge(signature).label }}
                                     </Badge>
                                 </TableCell>
 
                                 <TableCell>
-                                    <span class="text-sm">{{ signature.signed_at }}</span>
+                                    <span class="text-sm">{{
+                                        signature.signed_at
+                                    }}</span>
                                 </TableCell>
 
                                 <TableCell>
-                                    <Badge :class="getFormatBadge(signature.signature_format)">
+                                    <Badge
+                                        :class="
+                                            getFormatBadge(
+                                                signature.signature_format,
+                                            )
+                                        "
+                                    >
                                         {{ signature.signature_format }}
                                     </Badge>
                                 </TableCell>
 
                                 <TableCell>
                                     <div class="flex items-center gap-1">
-                                        <Shield class="h-4 w-4 text-muted-foreground" />
-                                        <span class="text-sm">{{ signature.verification_count }}</span>
+                                        <Shield
+                                            class="h-4 w-4 text-muted-foreground"
+                                        />
+                                        <span class="text-sm">{{
+                                            signature.verification_count
+                                        }}</span>
                                     </div>
                                 </TableCell>
 
@@ -299,27 +404,63 @@ const getTypeLabel = () => {
                                     <DropdownMenu>
                                         <DropdownMenuTrigger as-child>
                                             <Button variant="ghost" size="icon">
-                                                <MoreHorizontal class="h-4 w-4" />
+                                                <MoreHorizontal
+                                                    class="h-4 w-4"
+                                                />
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
-                                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                            <DropdownMenuLabel
+                                                >Actions</DropdownMenuLabel
+                                            >
                                             <DropdownMenuItem as-child>
-                                                <Link :href="route('signatures.show', signature.id)" class="flex items-center">
-                                                    <Eye class="h-4 w-4 mr-2" />
+                                                <Link
+                                                    :href="
+                                                        route(
+                                                            'signatures.show',
+                                                            signature.id,
+                                                        )
+                                                    "
+                                                    class="flex items-center"
+                                                >
+                                                    <Eye class="mr-2 h-4 w-4" />
                                                     View Details
                                                 </Link>
                                             </DropdownMenuItem>
                                             <DropdownMenuItem as-child>
-                                                <Link :href="route('verifications.create', { signature_id: signature.id })" class="flex items-center">
-                                                    <Shield class="h-4 w-4 mr-2" />
+                                                <Link
+                                                    :href="
+                                                        route(
+                                                            'verifications.create',
+                                                            {
+                                                                signature_id:
+                                                                    signature.id,
+                                                            },
+                                                        )
+                                                    "
+                                                    class="flex items-center"
+                                                >
+                                                    <Shield
+                                                        class="mr-2 h-4 w-4"
+                                                    />
                                                     Verify
                                                 </Link>
                                             </DropdownMenuItem>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem as-child>
-                                                <Link :href="route('keys.show', signature.key_pair.id)" class="flex items-center">
-                                                    <KeyRound class="h-4 w-4 mr-2" />
+                                                <Link
+                                                    :href="
+                                                        route(
+                                                            'keys.show',
+                                                            signature.key_pair
+                                                                .id,
+                                                        )
+                                                    "
+                                                    class="flex items-center"
+                                                >
+                                                    <KeyRound
+                                                        class="mr-2 h-4 w-4"
+                                                    />
                                                     View Key
                                                 </Link>
                                             </DropdownMenuItem>

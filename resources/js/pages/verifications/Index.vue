@@ -1,12 +1,7 @@
 <!-- resources/js/pages/verifications/Index.vue -->
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import AppLayout from '@/layouts/AppLayout.vue';
-import { type BreadcrumbItem } from '@/types';
 import { usePage } from '@inertiajs/vue3';
-import { route as ziggyRoute } from 'ziggy-js';
-import type { Config } from 'ziggy-js';
-import { ref } from 'vue';
 import {
     ShieldCheck,
     History,
@@ -21,7 +16,11 @@ import {
     MoreHorizontal,
     Search,
 } from 'lucide-vue-next';
+import { ref } from 'vue';
+import { route as ziggyRoute } from 'ziggy-js';
+import type { Config } from 'ziggy-js';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -32,17 +31,6 @@ import {
     CardFooter,
 } from '@/components/ui/card';
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
@@ -50,6 +38,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
@@ -58,11 +48,21 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
+import {
     Tooltip,
     TooltipContent,
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { type BreadcrumbItem } from '@/types';
 
 const page = usePage();
 const ziggy = page.props.ziggy as Config;

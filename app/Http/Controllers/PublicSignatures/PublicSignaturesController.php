@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\PublicSignatures;
 
 use App\Http\Controllers\Controller;
+use App\Models\FileSigned;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
-use App\Models\FileSigned;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -27,7 +27,7 @@ class PublicSignaturesController extends Controller
      */
     public function verify(Request $request)
     {
-        
+
         // Si un token est fourni, vérifier par token
         if ($request->filled('token')) {
             return $this->verifyByToken($request);
@@ -43,7 +43,7 @@ class PublicSignaturesController extends Controller
     private function verifyByToken(Request $request)
     {
         $request->validate([
-            'token' => 'required|string'
+            'token' => 'required|string',
         ]);
 
         $startTime = microtime(true);
@@ -54,7 +54,7 @@ class PublicSignaturesController extends Controller
                 ->with(['signature.file', 'signature.signer', 'signature.keyPair'])
                 ->first();
 
-            if (!$verification) {
+            if (! $verification) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Token de vérification invalide.',
@@ -65,14 +65,14 @@ class PublicSignaturesController extends Controller
                         'signed_at' => null,
                         'algorithm' => 'Inconnu',
                         'fingerprint' => '',
-                        'warning' => 'Le token fourni n\'existe pas dans notre système.'
-                    ]
+                        'warning' => 'Le token fourni n\'existe pas dans notre système.',
+                    ],
                 ]);
             }
 
             $signature = $verification->signature;
 
-            if (!$signature) {
+            if (! $signature) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Signature introuvable pour ce token.',
@@ -83,7 +83,7 @@ class PublicSignaturesController extends Controller
                         'signed_at' => null,
                         'algorithm' => 'Inconnu',
                         'fingerprint' => '',
-                    ]
+                    ],
                 ]);
             }
 
@@ -123,11 +123,11 @@ class PublicSignaturesController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Public verification by token failed: ' . $e->getMessage());
+            \Log::error('Public verification by token failed: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la vérification: ' . $e->getMessage(),
+                'message' => 'Erreur lors de la vérification: '.$e->getMessage(),
                 'details' => [
                     'signature_valid' => false,
                     'document_integrity' => false,
@@ -135,7 +135,7 @@ class PublicSignaturesController extends Controller
                     'signed_at' => null,
                     'algorithm' => 'Inconnu',
                     'fingerprint' => '',
-                ]
+                ],
             ], 500);
         }
     }
@@ -163,7 +163,7 @@ class PublicSignaturesController extends Controller
             // Chercher si le fichier existe dans notre système
             $fileSigned = FileSigned::where('file_hash', $fileHash)->first();
 
-            $isInternalDocument = !is_null($fileSigned);
+            $isInternalDocument = ! is_null($fileSigned);
 
             $result = $isInternalDocument
                 ? $this->verifyInternalDocument($fileSigned, $file, $signatureFile, $request, $startTime)
@@ -176,11 +176,11 @@ class PublicSignaturesController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
 
-            \Log::error('Public verification by upload failed: ' . $e->getMessage());
+            \Log::error('Public verification by upload failed: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la vérification: ' . $e->getMessage(),
+                'message' => 'Erreur lors de la vérification: '.$e->getMessage(),
                 'details' => [
                     'signature_valid' => false,
                     'document_integrity' => false,
@@ -188,8 +188,8 @@ class PublicSignaturesController extends Controller
                     'signed_at' => null,
                     'algorithm' => 'Inconnu',
                     'fingerprint' => '',
-                    'warning' => 'Le document n\'a pas pu être vérifié.'
-                ]
+                    'warning' => 'Le document n\'a pas pu être vérifié.',
+                ],
             ], 500);
         }
     }
@@ -204,7 +204,7 @@ class PublicSignaturesController extends Controller
             ->latest()
             ->first();
 
-        if (!$signature) {
+        if (! $signature) {
             throw new \Exception('Aucune signature trouvée pour ce document.');
         }
 
@@ -228,13 +228,13 @@ class PublicSignaturesController extends Controller
             'expected_hash' => $fileSigned->file_hash,
             'result' => $verificationSuccess,
             'verification_type' => $signatureFile ? 'signature' : 'hash',
-            'verification_details' => json_encode([
+            'verification_details' => [
                 'document_integrity' => $documentIntegrity,
                 'signature_valid' => $signatureValid,
                 'key_valid' => $keyValid,
                 'format' => $signature->signature_format,
                 'algorithm' => $signature->algorithm_used,
-            ]),
+            ],
             'signature_timestamp' => $signature->signed_at,
             'document_timestamp' => $fileSigned->created_at,
             'verifier_ip' => $request->ip(),
@@ -275,14 +275,14 @@ class PublicSignaturesController extends Controller
     private function verifyExternalDocument($file, $signatureFile, $request, $startTime)
     {
         // Si pas de fichier signature, on ne peut pas vérifier
-        if (!$signatureFile) {
+        if (! $signatureFile) {
             throw new \Exception('Un fichier de signature est requis pour vérifier un document externe.');
         }
 
         $signatureContent = file_get_contents($signatureFile->getRealPath());
         $signatureData = $this->parseExternalSignature($signatureContent);
 
-        if (!$signatureData || !isset($signatureData['signature'])) {
+        if (! $signatureData || ! isset($signatureData['signature'])) {
             throw new \Exception('Format de signature invalide.');
         }
 
@@ -291,12 +291,12 @@ class PublicSignaturesController extends Controller
 
         if (isset($signatureData['public_key'])) {
             $publicKey = $signatureData['public_key'];
-        } elseif (isset($signatureData['certificates']) && !empty($signatureData['certificates'])) {
+        } elseif (isset($signatureData['certificates']) && ! empty($signatureData['certificates'])) {
             $certResource = openssl_x509_read($signatureData['certificates'][0]);
             $publicKey = openssl_pkey_get_details($certResource)['key'];
         }
 
-        if (!$publicKey) {
+        if (! $publicKey) {
             throw new \Exception('Aucune clé publique trouvée dans la signature.');
         }
 
@@ -323,12 +323,12 @@ class PublicSignaturesController extends Controller
             'expected_hash' => $signatureData['file_hash'] ?? null,
             'result' => $verificationSuccess,
             'verification_type' => 'external',
-            'verification_details' => json_encode([
+            'verification_details' => [
                 'signature_valid' => $signatureValid,
                 'document_integrity' => $documentIntegrity,
                 'format' => $signatureData['format'] ?? 'unknown',
-                'external' => true
-            ]),
+                'external' => true,
+            ],
             'signature_timestamp' => $signatureData['timestamp'] ?? null,
             'verifier_ip' => $request->ip(),
             'verifier_user_agent' => $request->userAgent(),
@@ -350,7 +350,7 @@ class PublicSignaturesController extends Controller
                 'signed_at' => $signatureData['timestamp'] ?? null,
                 'algorithm' => $signatureData['algorithm'] ?? 'Inconnu',
                 'fingerprint' => $this->generateFingerprint($publicKey),
-                'warning' => 'Document externe - non enregistré dans notre système'
+                'warning' => 'Document externe - non enregistré dans notre système',
             ],
             'verification_id' => $verification->id,
             'token' => $verification->verification_token, // Optionnel
@@ -386,7 +386,8 @@ class PublicSignaturesController extends Controller
                     return $this->verifyBasicSignature($signature, $file);
             }
         } catch (\Exception $e) {
-            \Log::error('Signature verification error: ' . $e->getMessage());
+            \Log::error('Signature verification error: '.$e->getMessage());
+
             return false;
         }
     }
@@ -398,14 +399,14 @@ class PublicSignaturesController extends Controller
     {
         $signatureData = json_decode($signature->signature_value, true);
 
-        if (!$signatureData || !isset($signatureData['signature'])) {
+        if (! $signatureData || ! isset($signatureData['signature'])) {
             return false;
         }
 
         $pdfContent = file_get_contents($file->getRealPath());
 
         $keyPair = $signature->keyPair;
-        if (!$keyPair || !$keyPair->public_key) {
+        if (! $keyPair || ! $keyPair->public_key) {
             return false;
         }
 
@@ -424,7 +425,7 @@ class PublicSignaturesController extends Controller
     {
         $signatureData = json_decode($signature->signature_value, true);
 
-        if (!$signatureData || !isset($signatureData['signature'])) {
+        if (! $signatureData || ! isset($signatureData['signature'])) {
             return false;
         }
 
@@ -440,7 +441,7 @@ class PublicSignaturesController extends Controller
         }
 
         $keyPair = $signature->keyPair;
-        if (!$keyPair || !$keyPair->public_key) {
+        if (! $keyPair || ! $keyPair->public_key) {
             return false;
         }
 
@@ -460,7 +461,7 @@ class PublicSignaturesController extends Controller
         $fileContent = file_get_contents($file->getRealPath());
 
         $keyPair = $signature->keyPair;
-        if (!$keyPair || !$keyPair->public_key) {
+        if (! $keyPair || ! $keyPair->public_key) {
             return false;
         }
 
@@ -487,14 +488,14 @@ class PublicSignaturesController extends Controller
             return [
                 'format' => 'PKCS7',
                 'signature' => base64_encode($content),
-                'certificates' => $certificates
+                'certificates' => $certificates,
             ];
         }
 
         if ($this->isBinaryContent($content)) {
             return [
                 'format' => 'raw',
-                'signature' => base64_encode($content)
+                'signature' => base64_encode($content),
             ];
         }
 
@@ -506,7 +507,7 @@ class PublicSignaturesController extends Controller
      */
     private function isBinaryContent($content)
     {
-        return !mb_check_encoding($content, 'UTF-8') || preg_match('/[^\x20-\x7E\r\n\t]/', $content);
+        return ! mb_check_encoding($content, 'UTF-8') || preg_match('/[^\x20-\x7E\r\n\t]/', $content);
     }
 
     /**
@@ -516,6 +517,7 @@ class PublicSignaturesController extends Controller
     {
         $key = preg_replace('/-----(BEGIN|END) (PUBLIC|PRIVATE) KEY-----/', '', $publicKey);
         $key = preg_replace('/\s+/', '', $key);
+
         return implode(':', str_split(substr(strtoupper(hash('sha256', $key)), 0, 16), 2));
     }
 
@@ -528,15 +530,15 @@ class PublicSignaturesController extends Controller
             return 'Le document est authentique et la signature est valide.';
         }
 
-        if (!$documentIntegrity && !$signatureValid) {
+        if (! $documentIntegrity && ! $signatureValid) {
             return 'Le document a été modifié et la signature est invalide.';
         }
 
-        if (!$documentIntegrity) {
+        if (! $documentIntegrity) {
             return 'Le document a été modifié depuis sa signature.';
         }
 
-        if (!$signatureValid) {
+        if (! $signatureValid) {
             return 'La signature est invalide ou a été altérée.';
         }
 

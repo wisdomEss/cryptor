@@ -1,25 +1,22 @@
 <!-- resources/js/pages/Keys/Create.vue -->
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import AppLayout from '@/layouts/AppLayout.vue';
-import { type BreadcrumbItem } from '@/types';
 import { usePage } from '@inertiajs/vue3';
-import { route as ziggyRoute } from 'ziggy-js';
-import type { Config } from 'ziggy-js';
-import { ref, computed } from 'vue';
 import {
     KeyRound,
-    Shield,
-    Calendar,
     Info,
     AlertCircle,
     ChevronLeft,
     LoaderCircle,
     CheckCircle2,
     Download,
-    Copy
+    Copy,
 } from 'lucide-vue-next';
+import { ref, computed } from 'vue';
+import { route as ziggyRoute } from 'ziggy-js';
+import type { Config } from 'ziggy-js';
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
     Card,
@@ -29,6 +26,7 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     FormControl,
     FormDescription,
@@ -38,6 +36,7 @@ import {
     FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
     Select,
     SelectContent,
@@ -45,22 +44,16 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import {
-    Tabs,
-    TabsContent,
-    TabsList,
-    TabsTrigger,
-} from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     Tooltip,
     TooltipContent,
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { type BreadcrumbItem } from '@/types';
 
 // Configuration Ziggy
 const page = usePage();
@@ -120,13 +113,22 @@ const isSubmitting = computed(() => form.processing);
 const algorithmDescriptions = {
     rsa: {
         title: 'RSA',
-        description: 'Rivest-Shamir-Adleman - Standard industriel largement supporté',
-        strengths: ['Très compatible', 'Bon pour le chiffrement', 'Testé et approuvé'],
-        weaknesses: ['Plus lent que ECDSA', 'Clés plus longues pour même sécurité'],
+        description:
+            'Rivest-Shamir-Adleman - Standard industriel largement supporté',
+        strengths: [
+            'Très compatible',
+            'Bon pour le chiffrement',
+            'Testé et approuvé',
+        ],
+        weaknesses: [
+            'Plus lent que ECDSA',
+            'Clés plus longues pour même sécurité',
+        ],
     },
     ecdsa: {
         title: 'ECDSA',
-        description: 'Elliptic Curve Digital Signature Algorithm - Plus rapide avec des clés plus courtes',
+        description:
+            'Elliptic Curve Digital Signature Algorithm - Plus rapide avec des clés plus courtes',
         strengths: ['Clés plus courtes', 'Plus rapide', 'Bonne sécurité'],
         weaknesses: ['Moins compatible que RSA', 'Plus complexe'],
     },
@@ -179,23 +181,29 @@ const resetForm = () => {
                     </Link>
                 </Button>
                 <div>
-                    <h1 class="text-2xl font-bold tracking-tight">Generate Key Pair</h1>
+                    <h1 class="text-2xl font-bold tracking-tight">
+                        Generate Key Pair
+                    </h1>
                     <p class="text-sm text-muted-foreground">
-                        Create a new cryptographic key pair for signing documents
+                        Create a new cryptographic key pair for signing
+                        documents
                     </p>
                 </div>
             </div>
 
             <!-- Success State - Key Generated -->
-            <div v-if="generatedKey" class="max-w-3xl mx-auto w-full">
+            <div v-if="generatedKey" class="mx-auto w-full max-w-3xl">
                 <Card>
                     <CardHeader>
                         <div class="flex items-center gap-2">
-                            <CheckCircle2 class="h-6 w-6 text-green-600 dark:text-green-500" />
+                            <CheckCircle2
+                                class="h-6 w-6 text-green-600 dark:text-green-500"
+                            />
                             <CardTitle>Key Generated Successfully</CardTitle>
                         </div>
                         <CardDescription>
-                            Your new key pair has been created and securely stored.
+                            Your new key pair has been created and securely
+                            stored.
                         </CardDescription>
                     </CardHeader>
                     <CardContent class="space-y-6">
@@ -203,7 +211,8 @@ const resetForm = () => {
                             <AlertCircle class="h-4 w-4" />
                             <AlertTitle>Important</AlertTitle>
                             <AlertDescription>
-                                Save your private key now. You won't be able to retrieve it again!
+                                Save your private key now. You won't be able to
+                                retrieve it again!
                             </AlertDescription>
                         </Alert>
 
@@ -211,24 +220,34 @@ const resetForm = () => {
                         <div class="space-y-4">
                             <div class="grid gap-2">
                                 <div class="text-sm font-medium">Key Name</div>
-                                <div class="text-sm">{{ generatedKey.key_name }}</div>
+                                <div class="text-sm">
+                                    {{ generatedKey.key_name }}
+                                </div>
                             </div>
                             <Separator />
-                            
+
                             <div class="grid gap-2">
-                                <div class="text-sm font-medium">Fingerprint</div>
+                                <div class="text-sm font-medium">
+                                    Fingerprint
+                                </div>
                                 <div class="flex items-center gap-2">
-                                    <code class="relative rounded bg-muted px-2 py-1 font-mono text-sm">
+                                    <code
+                                        class="relative rounded bg-muted px-2 py-1 font-mono text-sm"
+                                    >
                                         {{ generatedKey.fingerprint }}
                                     </code>
                                     <TooltipProvider>
                                         <Tooltip>
                                             <TooltipTrigger as-child>
-                                                <Button 
-                                                    variant="ghost" 
-                                                    size="icon" 
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
                                                     class="h-8 w-8"
-                                                    @click="copyToClipboard(generatedKey.fingerprint)"
+                                                    @click="
+                                                        copyToClipboard(
+                                                            generatedKey.fingerprint,
+                                                        )
+                                                    "
                                                 >
                                                     <Copy class="h-4 w-4" />
                                                 </Button>
@@ -242,26 +261,44 @@ const resetForm = () => {
                             </div>
 
                             <!-- Private Key Download -->
-                            <div v-if="generatedKey.private_key" class="space-y-2">
-                                <div class="text-sm font-medium">Private Key</div>
-                                <Button 
-                                    variant="outline" 
-                                    @click="downloadKey(generatedKey.private_key!, `${generatedKey.key_name}.key`)"
+                            <div
+                                v-if="generatedKey.private_key"
+                                class="space-y-2"
+                            >
+                                <div class="text-sm font-medium">
+                                    Private Key
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    @click="
+                                        downloadKey(
+                                            generatedKey.private_key!,
+                                            `${generatedKey.key_name}.key`,
+                                        )
+                                    "
                                 >
                                     <Download class="mr-2 h-4 w-4" />
                                     Download Private Key
                                 </Button>
                                 <p class="text-xs text-muted-foreground">
-                                    Store this key securely. It cannot be recovered if lost.
+                                    Store this key securely. It cannot be
+                                    recovered if lost.
                                 </p>
                             </div>
 
                             <!-- Public Key Download -->
                             <div class="space-y-2">
-                                <div class="text-sm font-medium">Public Key</div>
-                                <Button 
-                                    variant="outline" 
-                                    @click="downloadKey(generatedKey.public_key, `${generatedKey.key_name}.pub`)"
+                                <div class="text-sm font-medium">
+                                    Public Key
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    @click="
+                                        downloadKey(
+                                            generatedKey.public_key,
+                                            `${generatedKey.key_name}.pub`,
+                                        )
+                                    "
                                 >
                                     <Download class="mr-2 h-4 w-4" />
                                     Download Public Key
@@ -283,23 +320,27 @@ const resetForm = () => {
             </div>
 
             <!-- Generation Form -->
-            <div v-else class="max-w-3xl mx-auto w-full">
+            <div v-else class="mx-auto w-full max-w-3xl">
                 <form @submit.prevent="submitForm">
                     <Card>
                         <CardHeader>
                             <CardTitle>Key Configuration</CardTitle>
                             <CardDescription>
-                                Choose the algorithm and parameters for your key pair
+                                Choose the algorithm and parameters for your key
+                                pair
                             </CardDescription>
                         </CardHeader>
                         <CardContent class="space-y-6">
                             <!-- Key Name -->
-                            <FormField v-slot="{ componentField }" name="key_name">
+                            <FormField
+                                v-slot="{ componentField }"
+                                name="key_name"
+                            >
                                 <FormItem>
                                     <FormLabel>Key Name</FormLabel>
                                     <FormControl>
-                                        <Input 
-                                            v-bind="componentField" 
+                                        <Input
+                                            v-bind="componentField"
                                             v-model="form.key_name"
                                             placeholder="e.g., My Signing Key 2026"
                                         />
@@ -314,34 +355,80 @@ const resetForm = () => {
                             </FormField>
 
                             <!-- Algorithm Selection -->
-                            <FormField v-slot="{ componentField }" name="algorithm">
+                            <FormField name="algorithm">
                                 <FormItem>
                                     <FormLabel>Algorithm</FormLabel>
                                     <FormControl>
-                                        <Tabs v-model="form.algorithm" class="w-full">
-                                            <TabsList class="grid w-full grid-cols-2">
-                                                <TabsTrigger value="rsa">RSA</TabsTrigger>
-                                                <TabsTrigger value="ecdsa">ECDSA</TabsTrigger>
+                                        <Tabs
+                                            v-model="form.algorithm"
+                                            class="w-full"
+                                        >
+                                            <TabsList
+                                                class="grid w-full grid-cols-2"
+                                            >
+                                                <TabsTrigger value="rsa"
+                                                    >RSA</TabsTrigger
+                                                >
+                                                <TabsTrigger value="ecdsa"
+                                                    >ECDSA</TabsTrigger
+                                                >
                                             </TabsList>
-                                            <TabsContent value="rsa" class="mt-4">
-                                                <div class="rounded-lg border p-4">
-                                                    <h4 class="font-medium">{{ algorithmDescriptions.rsa.title }}</h4>
-                                                    <p class="text-sm text-muted-foreground mt-1">
-                                                        {{ algorithmDescriptions.rsa.description }}
+                                            <TabsContent
+                                                value="rsa"
+                                                class="mt-4"
+                                            >
+                                                <div
+                                                    class="rounded-lg border p-4"
+                                                >
+                                                    <h4 class="font-medium">
+                                                        {{
+                                                            algorithmDescriptions
+                                                                .rsa.title
+                                                        }}
+                                                    </h4>
+                                                    <p
+                                                        class="mt-1 text-sm text-muted-foreground"
+                                                    >
+                                                        {{
+                                                            algorithmDescriptions
+                                                                .rsa.description
+                                                        }}
                                                     </p>
-                                                    <div class="mt-3 grid grid-cols-2 gap-4">
+                                                    <div
+                                                        class="mt-3 grid grid-cols-2 gap-4"
+                                                    >
                                                         <div>
-                                                            <span class="text-xs font-medium">Advantages</span>
-                                                            <ul class="mt-1 text-xs text-muted-foreground list-disc list-inside">
-                                                                <li v-for="item in algorithmDescriptions.rsa.strengths" :key="item">
+                                                            <span
+                                                                class="text-xs font-medium"
+                                                                >Advantages</span
+                                                            >
+                                                            <ul
+                                                                class="mt-1 list-inside list-disc text-xs text-muted-foreground"
+                                                            >
+                                                                <li
+                                                                    v-for="item in algorithmDescriptions
+                                                                        .rsa
+                                                                        .strengths"
+                                                                    :key="item"
+                                                                >
                                                                     {{ item }}
                                                                 </li>
                                                             </ul>
                                                         </div>
                                                         <div>
-                                                            <span class="text-xs font-medium">Considerations</span>
-                                                            <ul class="mt-1 text-xs text-muted-foreground list-disc list-inside">
-                                                                <li v-for="item in algorithmDescriptions.rsa.weaknesses" :key="item">
+                                                            <span
+                                                                class="text-xs font-medium"
+                                                                >Considerations</span
+                                                            >
+                                                            <ul
+                                                                class="mt-1 list-inside list-disc text-xs text-muted-foreground"
+                                                            >
+                                                                <li
+                                                                    v-for="item in algorithmDescriptions
+                                                                        .rsa
+                                                                        .weaknesses"
+                                                                    :key="item"
+                                                                >
                                                                     {{ item }}
                                                                 </li>
                                                             </ul>
@@ -349,25 +436,63 @@ const resetForm = () => {
                                                     </div>
                                                 </div>
                                             </TabsContent>
-                                            <TabsContent value="ecdsa" class="mt-4">
-                                                <div class="rounded-lg border p-4">
-                                                    <h4 class="font-medium">{{ algorithmDescriptions.ecdsa.title }}</h4>
-                                                    <p class="text-sm text-muted-foreground mt-1">
-                                                        {{ algorithmDescriptions.ecdsa.description }}
+                                            <TabsContent
+                                                value="ecdsa"
+                                                class="mt-4"
+                                            >
+                                                <div
+                                                    class="rounded-lg border p-4"
+                                                >
+                                                    <h4 class="font-medium">
+                                                        {{
+                                                            algorithmDescriptions
+                                                                .ecdsa.title
+                                                        }}
+                                                    </h4>
+                                                    <p
+                                                        class="mt-1 text-sm text-muted-foreground"
+                                                    >
+                                                        {{
+                                                            algorithmDescriptions
+                                                                .ecdsa
+                                                                .description
+                                                        }}
                                                     </p>
-                                                    <div class="mt-3 grid grid-cols-2 gap-4">
+                                                    <div
+                                                        class="mt-3 grid grid-cols-2 gap-4"
+                                                    >
                                                         <div>
-                                                            <span class="text-xs font-medium">Advantages</span>
-                                                            <ul class="mt-1 text-xs text-muted-foreground list-disc list-inside">
-                                                                <li v-for="item in algorithmDescriptions.ecdsa.strengths" :key="item">
+                                                            <span
+                                                                class="text-xs font-medium"
+                                                                >Advantages</span
+                                                            >
+                                                            <ul
+                                                                class="mt-1 list-inside list-disc text-xs text-muted-foreground"
+                                                            >
+                                                                <li
+                                                                    v-for="item in algorithmDescriptions
+                                                                        .ecdsa
+                                                                        .strengths"
+                                                                    :key="item"
+                                                                >
                                                                     {{ item }}
                                                                 </li>
                                                             </ul>
                                                         </div>
                                                         <div>
-                                                            <span class="text-xs font-medium">Considerations</span>
-                                                            <ul class="mt-1 text-xs text-muted-foreground list-disc list-inside">
-                                                                <li v-for="item in algorithmDescriptions.ecdsa.weaknesses" :key="item">
+                                                            <span
+                                                                class="text-xs font-medium"
+                                                                >Considerations</span
+                                                            >
+                                                            <ul
+                                                                class="mt-1 list-inside list-disc text-xs text-muted-foreground"
+                                                            >
+                                                                <li
+                                                                    v-for="item in algorithmDescriptions
+                                                                        .ecdsa
+                                                                        .weaknesses"
+                                                                    :key="item"
+                                                                >
                                                                     {{ item }}
                                                                 </li>
                                                             </ul>
@@ -384,32 +509,52 @@ const resetForm = () => {
                             </FormField>
 
                             <!-- Key Size (RSA only) -->
-                            <FormField v-if="form.algorithm === 'rsa'" v-slot="{ componentField }" name="key_size">
+                            <FormField
+                                v-if="form.algorithm === 'rsa'"
+                                name="key_size"
+                            >
                                 <FormItem>
                                     <FormLabel>Key Size</FormLabel>
                                     <FormControl>
-                                        <RadioGroup v-model="form.key_size" class="flex gap-4">
-                                            <FormItem class="flex items-center space-x-2 space-y-0">
+                                        <RadioGroup
+                                            v-model="form.key_size"
+                                            class="flex gap-4"
+                                        >
+                                            <FormItem
+                                                class="flex items-center space-y-0 space-x-2"
+                                            >
                                                 <FormControl>
-                                                    <RadioGroupItem value="2048" />
+                                                    <RadioGroupItem
+                                                        value="2048"
+                                                    />
                                                 </FormControl>
-                                                <FormLabel class="font-normal cursor-pointer">
+                                                <FormLabel
+                                                    class="cursor-pointer font-normal"
+                                                >
                                                     2048 bits (recommended)
                                                 </FormLabel>
                                             </FormItem>
-                                            <FormItem class="flex items-center space-x-2 space-y-0">
+                                            <FormItem
+                                                class="flex items-center space-y-0 space-x-2"
+                                            >
                                                 <FormControl>
-                                                    <RadioGroupItem value="4096" />
+                                                    <RadioGroupItem
+                                                        value="4096"
+                                                    />
                                                 </FormControl>
-                                                <FormLabel class="font-normal cursor-pointer">
+                                                <FormLabel
+                                                    class="cursor-pointer font-normal"
+                                                >
                                                     4096 bits (more secure)
                                                 </FormLabel>
                                             </FormItem>
-                       
- 5123                        </RadioGroup>
+
+                                            5123
+                                        </RadioGroup>
                                     </FormControl>
                                     <FormDescription>
-                                        Larger keys are more secure but slower to generate and use
+                                        Larger keys are more secure but slower
+                                        to generate and use
                                     </FormDescription>
                                     <FormMessage v-if="form.errors.key_size">
                                         {{ form.errors.key_size }}
@@ -418,21 +563,35 @@ const resetForm = () => {
                             </FormField>
 
                             <!-- Validity Period -->
-                            <FormField v-slot="{ componentField }" name="valid_days">
+                            <FormField name="valid_days">
                                 <FormItem>
                                     <FormLabel>Validity Period</FormLabel>
                                     <FormControl>
                                         <Select v-model="form.valid_days">
                                             <SelectTrigger>
-                                                <SelectValue placeholder="Select validity period" />
+                                                <SelectValue
+                                                    placeholder="Select validity period"
+                                                />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="30">30 days</SelectItem>
-                                                <SelectItem value="90">90 days</SelectItem>
-                                                <SelectItem value="180">6 months</SelectItem>
-                                                <SelectItem value="365">1 year</SelectItem>
-                                                <SelectItem value="730">2 years</SelectItem>
-                                                <SelectItem value="0">Never expires</SelectItem>
+                                                <SelectItem value="30"
+                                                    >30 days</SelectItem
+                                                >
+                                                <SelectItem value="90"
+                                                    >90 days</SelectItem
+                                                >
+                                                <SelectItem value="180"
+                                                    >6 months</SelectItem
+                                                >
+                                                <SelectItem value="365"
+                                                    >1 year</SelectItem
+                                                >
+                                                <SelectItem value="730"
+                                                    >2 years</SelectItem
+                                                >
+                                                <SelectItem value="0"
+                                                    >Never expires</SelectItem
+                                                >
                                             </SelectContent>
                                         </Select>
                                     </FormControl>
@@ -447,65 +606,103 @@ const resetForm = () => {
 
                             <!-- Advanced Options -->
                             <div class="space-y-4">
-                                <Button 
-                                    type="button" 
-                                    variant="ghost" 
-                                    class="p-0 h-auto font-normal"
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    class="h-auto p-0 font-normal"
                                     @click="showAdvanced = !showAdvanced"
                                 >
-                                    {{ showAdvanced ? 'Hide' : 'Show' }} advanced options
+                                    {{
+                                        showAdvanced ? 'Hide' : 'Show'
+                                    }}
+                                    advanced options
                                 </Button>
 
                                 <div v-if="showAdvanced" class="space-y-4">
                                     <!-- Set as Default -->
-                                    <FormField v-slot="{ componentField }" name="set_as_default">
-                                        <FormItem class="flex flex-row items-start space-x-3 space-y-0">
+                                    <FormField
+                                        v-slot="{ componentField }"
+                                        name="set_as_default"
+                                    >
+                                        <FormItem
+                                            class="flex flex-row items-start space-y-0 space-x-3"
+                                        >
                                             <FormControl>
-                                                <Checkbox 
-                                                    v-bind="componentField" 
-                                                    v-model:checked="form.set_as_default"
+                                                <Checkbox
+                                                    v-bind="componentField"
+                                                    v-model:checked="
+                                                        form.set_as_default
+                                                    "
                                                 />
                                             </FormControl>
                                             <div class="space-y-1 leading-none">
-                                                <FormLabel>Set as default key</FormLabel>
+                                                <FormLabel
+                                                    >Set as default
+                                                    key</FormLabel
+                                                >
                                                 <FormDescription>
-                                                    Use this key by default for new signatures
+                                                    Use this key by default for
+                                                    new signatures
                                                 </FormDescription>
                                             </div>
                                         </FormItem>
                                     </FormField>
 
                                     <!-- Certificate Information Toggle -->
-                                    <Button 
-                                        type="button" 
-                                        variant="ghost" 
-                                        class="p-0 h-auto font-normal"
-                                        @click="showCertificate = !showCertificate"
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        class="h-auto p-0 font-normal"
+                                        @click="
+                                            showCertificate = !showCertificate
+                                        "
                                     >
-                                        {{ showCertificate ? 'Hide' : 'Add' }} certificate information
+                                        {{
+                                            showCertificate ? 'Hide' : 'Add'
+                                        }}
+                                        certificate information
                                     </Button>
 
-                                    <div v-if="showCertificate" class="space-y-4 border-l-2 pl-4">
-                                        <FormField v-slot="{ componentField }" name="certificate_issuer">
+                                    <div
+                                        v-if="showCertificate"
+                                        class="space-y-4 border-l-2 pl-4"
+                                    >
+                                        <FormField
+                                            v-slot="{ componentField }"
+                                            name="certificate_issuer"
+                                        >
                                             <FormItem>
-                                                <FormLabel>Certificate Issuer</FormLabel>
+                                                <FormLabel
+                                                    >Certificate
+                                                    Issuer</FormLabel
+                                                >
                                                 <FormControl>
-                                                    <Input 
-                                                        v-bind="componentField" 
-                                                        v-model="form.certificate_issuer"
+                                                    <Input
+                                                        v-bind="componentField"
+                                                        v-model="
+                                                            form.certificate_issuer
+                                                        "
                                                         placeholder="e.g., DigiCert, Let's Encrypt"
                                                     />
                                                 </FormControl>
                                             </FormItem>
                                         </FormField>
 
-                                        <FormField v-slot="{ componentField }" name="certificate_data">
+                                        <FormField
+                                            v-slot="{ componentField }"
+                                            name="certificate_data"
+                                        >
                                             <FormItem>
-                                                <FormLabel>Certificate Data (PEM)</FormLabel>
+                                                <FormLabel
+                                                    >Certificate Data
+                                                    (PEM)</FormLabel
+                                                >
                                                 <FormControl>
-                                                    <Input 
-                                                        v-bind="componentField" 
-                                                        v-model="form.certificate_data"
+                                                    <Input
+                                                        v-bind="componentField"
+                                                        v-model="
+                                                            form.certificate_data
+                                                        "
                                                         placeholder="-----BEGIN CERTIFICATE-----..."
                                                     />
                                                 </FormControl>
@@ -520,8 +717,10 @@ const resetForm = () => {
                                 <Info class="h-4 w-4" />
                                 <AlertTitle>Security Notice</AlertTitle>
                                 <AlertDescription>
-                                    Your private key will be encrypted and stored securely. 
-                                    However, you should always keep a backup of your keys in a safe location.
+                                    Your private key will be encrypted and
+                                    stored securely. However, you should always
+                                    keep a backup of your keys in a safe
+                                    location.
                                 </AlertDescription>
                             </Alert>
                         </CardContent>
@@ -532,7 +731,10 @@ const resetForm = () => {
                                 </Link>
                             </Button>
                             <Button type="submit" :disabled="isSubmitting">
-                                <LoaderCircle v-if="isSubmitting" class="mr-2 h-4 w-4 animate-spin" />
+                                <LoaderCircle
+                                    v-if="isSubmitting"
+                                    class="mr-2 h-4 w-4 animate-spin"
+                                />
                                 <KeyRound v-else class="mr-2 h-4 w-4" />
                                 Generate Key Pair
                             </Button>

@@ -28,7 +28,7 @@ class SignatureVerification extends Model
         'certificate_chain',
         'timestamp_authority_used',
         'verification_token',
-        'is_public_verification'
+        'is_public_verification',
     ];
 
     protected $casts = [
@@ -38,7 +38,7 @@ class SignatureVerification extends Model
         'signature_timestamp' => 'datetime',
         'document_timestamp' => 'datetime',
         'verified_at' => 'datetime',
-        'verification_duration_ms' => 'integer'
+        'verification_duration_ms' => 'integer',
     ];
 
     // Relations
@@ -81,7 +81,7 @@ class SignatureVerification extends Model
     // Accessors
     public function getVerificationTypeLabelAttribute(): string
     {
-        return match($this->verification_type) {
+        return match ($this->verification_type) {
             'hash' => 'Vérification de Hash',
             'signature' => 'Vérification de Signature',
             'certificate' => 'Vérification de Certificat',
@@ -93,11 +93,11 @@ class SignatureVerification extends Model
     // Méthodes
     public function generateVerificationToken(): string
     {
-        if (!$this->verification_token) {
+        if (! $this->verification_token) {
             $this->verification_token = bin2hex(random_bytes(32));
             $this->save();
         }
-        
+
         return $this->verification_token;
     }
 

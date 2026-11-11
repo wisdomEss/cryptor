@@ -1,11 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import AppLayout from '@/layouts/AppLayout.vue';
-import { type BreadcrumbItem } from '@/types';
 import { usePage } from '@inertiajs/vue3';
-import { route as ziggyRoute } from 'ziggy-js';
-import type { Config } from 'ziggy-js';
-import { ref, computed, watch } from 'vue';
 import {
     FileSignature,
     Upload,
@@ -13,7 +8,6 @@ import {
     KeyRound,
     MapPin,
     FileText,
-    AlertCircle,
     CheckCircle2,
     X,
     Info,
@@ -24,36 +18,47 @@ import {
     Archive,
     Code,
     Database,
-    FileJson,
     FileSpreadsheet,
 } from 'lucide-vue-next';
+import { ref, computed, watch } from 'vue';
+import { route as ziggyRoute } from 'ziggy-js';
+import type { Config } from 'ziggy-js';
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import {
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+    CardFooter,
+} from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+    HoverCard,
+    HoverCardContent,
+    HoverCardTrigger,
+} from '@/components/ui/hover-card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
 import {
     Tooltip,
     TooltipContent,
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import {
-    HoverCard,
-    HoverCardContent,
-    HoverCardTrigger,
-} from '@/components/ui/hover-card';
-import {
-    Tabs,
-    TabsList,
-    TabsTrigger,
-    TabsContent,
-} from '@/components/ui/tabs';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { type BreadcrumbItem } from '@/types';
 
 const page = usePage();
 const ziggy = page.props.ziggy as Config;
@@ -92,7 +97,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 const form = useForm({
     file: null as File | null,
-    key_pair_id: props.keys.find(k => k.is_default)?.id || '',
+    key_pair_id: props.keys.find((k) => k.is_default)?.id || '',
     signing_reason: '',
     signing_location: '',
     contact_info: '',
@@ -115,80 +120,97 @@ const fileTypeCategories = {
         icon: FileText,
         description: 'Documents texte, contrats, rapports',
         recommended: 'cms',
-        formats: ['cms', 'pdf']
+        formats: ['cms', 'pdf'],
     },
     image: {
         extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'tiff', 'webp'],
         icon: Image,
         description: 'Images et photographies',
         recommended: 'cms',
-        formats: ['cms']
+        formats: ['cms'],
     },
     archive: {
         extensions: ['zip', 'tar', 'gz', '7z', 'rar'],
         icon: Archive,
         description: 'Fichiers compressés',
         recommended: 'cms',
-        formats: ['cms']
+        formats: ['cms'],
     },
     code: {
-        extensions: ['xml', 'json', 'yml', 'yaml', 'js', 'ts', 'php', 'py', 'java', 'cpp', 'c', 'h'],
+        extensions: [
+            'xml',
+            'json',
+            'yml',
+            'yaml',
+            'js',
+            'ts',
+            'php',
+            'py',
+            'java',
+            'cpp',
+            'c',
+            'h',
+        ],
         icon: Code,
         description: 'Code source, fichiers de configuration',
         recommended: 'cms',
-        formats: ['cms']
+        formats: ['cms'],
     },
     executable: {
         extensions: ['exe', 'msi', 'deb', 'rpm', 'apk', 'appimage'],
         icon: File,
         description: 'Fichiers exécutables, installateurs',
         recommended: 'cms',
-        formats: ['cms']
+        formats: ['cms'],
     },
     database: {
         extensions: ['sql', 'db', 'sqlite', 'mdb'],
         icon: Database,
         description: 'Bases de données, scripts SQL',
         recommended: 'cms',
-        formats: ['cms']
+        formats: ['cms'],
     },
     spreadsheet: {
         extensions: ['xls', 'xlsx', 'ods', 'csv'],
         icon: FileSpreadsheet,
         description: 'Tableurs, données structurées',
         recommended: 'cms',
-        formats: ['cms']
-    }
+        formats: ['cms'],
+    },
 };
 
 // Options de format avec descriptions détaillées
 const formatOptions = [
-    // { 
-    //     value: 'pkcs7', 
-    //     label: 'PKCS#7', 
+    // {
+    //     value: 'pkcs7',
+    //     label: 'PKCS#7',
     //     description: 'Format standard pour signatures détachées',
     //     longDescription: 'Idéal pour tous types de fichiers. La signature est séparée du document original.',
     //     useCases: 'Contrats, documents légaux, archives, tout fichier nécessitant une signature indépendante',
     //     icon: FileSignature,
     //     compatibility: 'Très large - compatible avec la plupart des outils de signature'
     // },
-    { 
-        value: 'cms', 
-        label: 'CMS', 
+    {
+        value: 'cms',
+        label: 'CMS',
         description: 'Cryptographie avancée',
-        longDescription: 'Format européen standard, basé sur PKCS#7 avec plus d\'options',
-        useCases: 'Documents sensibles, transactions sécurisées, échanges inter-administrations',
+        longDescription:
+            "Format européen standard, basé sur PKCS#7 avec plus d'options",
+        useCases:
+            'Documents sensibles, transactions sécurisées, échanges inter-administrations',
         icon: Shield,
-        compatibility: 'Large - utilisé dans les systèmes gouvernementaux européens'
+        compatibility:
+            'Large - utilisé dans les systèmes gouvernementaux européens',
     },
-    { 
-        value: 'pdf', 
-        label: 'PAdES', 
+    {
+        value: 'pdf',
+        label: 'PAdES',
         description: 'Signature intégrée au PDF',
         longDescription: 'Signature visible directement dans le document PDF',
-        useCases: 'Documents PDF à visualiser, factures électroniques, formulaires officiels',
+        useCases:
+            'Documents PDF à visualiser, factures électroniques, formulaires officiels',
         icon: FileText,
-        compatibility: 'Spécifique PDF - nécessite un lecteur PDF compatible'
+        compatibility: 'Spécifique PDF - nécessite un lecteur PDF compatible',
     },
 ];
 
@@ -204,20 +226,20 @@ const expirationOptions = [
 // Détection du type de fichier
 const getFileCategory = (filename: string) => {
     const extension = filename.split('.').pop()?.toLowerCase() || '';
-    
+
     for (const [category, info] of Object.entries(fileTypeCategories)) {
         if (info.extensions.includes(extension)) {
             return { category, ...info };
         }
     }
-    
+
     // Type par défaut
     return {
         category: 'other',
         icon: File,
         description: 'Type de fichier générique',
         recommended: 'cms',
-        formats: ['cms']
+        formats: ['cms'],
     };
 };
 
@@ -226,7 +248,7 @@ watch(selectedFile, (newFile) => {
     if (newFile) {
         const category = getFileCategory(newFile.name);
         recommendedFormat.value = category.recommended;
-        
+
         // Pré-sélectionner le format recommandé si aucun n'est choisi
         if (!form.signature_format) {
             form.signature_format = category.recommended;
@@ -248,7 +270,7 @@ const handleFileSelect = (event: Event) => {
 const handleDrop = (event: DragEvent) => {
     event.preventDefault();
     isDragging.value = false;
-    
+
     if (event.dataTransfer?.files && event.dataTransfer.files[0]) {
         const file = event.dataTransfer.files[0];
         selectedFile.value = file;
@@ -282,11 +304,15 @@ const formatFileSize = (bytes: number) => {
 
 const getAlgorithmColor = (algorithm: string) => {
     const colors: Record<string, string> = {
-        'rsa': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-        'ecdsa': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
-        'ed25519': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+        rsa: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
+        ecdsa: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300',
+        ed25519:
+            'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
     };
-    return colors[algorithm.toLowerCase()] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+    return (
+        colors[algorithm.toLowerCase()] ||
+        'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+    );
 };
 
 const fileCategoryIcon = computed(() => {
@@ -304,7 +330,9 @@ const fileCategoryIcon = computed(() => {
             <!-- Header -->
             <div class="flex items-center justify-between">
                 <div>
-                    <h1 class="text-2xl font-bold tracking-tight">Sign Document</h1>
+                    <h1 class="text-2xl font-bold tracking-tight">
+                        Sign Document
+                    </h1>
                     <p class="text-sm text-muted-foreground">
                         Apply your digital signature to a document
                     </p>
@@ -322,7 +350,7 @@ const fileCategoryIcon = computed(() => {
                 <!-- Two Column Layout -->
                 <div class="grid gap-6 lg:grid-cols-3">
                     <!-- Left Column - File Upload & Signing Details -->
-                    <div class="lg:col-span-2 space-y-6">
+                    <div class="space-y-6 lg:col-span-2">
                         <!-- File Upload Card -->
                         <Card>
                             <CardHeader>
@@ -335,26 +363,38 @@ const fileCategoryIcon = computed(() => {
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div v-if="!selectedFile"
-                                    class="border-2 border-dashed rounded-lg p-8 transition-colors"
+                                <div
+                                    v-if="!selectedFile"
+                                    class="rounded-lg border-2 border-dashed p-8 transition-colors"
                                     :class="{
-                                        'border-primary bg-primary/5': isDragging,
-                                        'border-border hover:border-muted-foreground/50': !isDragging
+                                        'border-primary bg-primary/5':
+                                            isDragging,
+                                        'border-border hover:border-muted-foreground/50':
+                                            !isDragging,
                                     }"
                                     @dragenter.prevent="isDragging = true"
                                     @dragover.prevent="isDragging = true"
                                     @dragleave.prevent="isDragging = false"
                                     @drop.prevent="handleDrop"
                                 >
-                                    <div class="flex flex-col items-center justify-center text-center">
-                                        <div class="p-3 bg-primary/10 rounded-full mb-4">
-                                            <Upload class="h-6 w-6 text-primary" />
+                                    <div
+                                        class="flex flex-col items-center justify-center text-center"
+                                    >
+                                        <div
+                                            class="mb-4 rounded-full bg-primary/10 p-3"
+                                        >
+                                            <Upload
+                                                class="h-6 w-6 text-primary"
+                                            />
                                         </div>
-                                        <h3 class="text-lg font-semibold mb-1">
+                                        <h3 class="mb-1 text-lg font-semibold">
                                             Drop your file here
                                         </h3>
-                                        <p class="text-sm text-muted-foreground mb-4">
-                                            or click to browse from your computer
+                                        <p
+                                            class="mb-4 text-sm text-muted-foreground"
+                                        >
+                                            or click to browse from your
+                                            computer
                                         </p>
                                         <Input
                                             type="file"
@@ -364,56 +404,114 @@ const fileCategoryIcon = computed(() => {
                                             accept=".pdf,.doc,.docx,.txt,.xml,.json,.p7m,.zip,.tar,.gz,.exe,.deb,.sql,.jpg,.png,.xls,.xlsx"
                                         />
                                         <Button variant="outline" as-child>
-                                            <label for="file-upload" class="cursor-pointer">
+                                            <label
+                                                for="file-upload"
+                                                class="cursor-pointer"
+                                            >
                                                 Choose File
                                             </label>
                                         </Button>
-                                        <p class="text-xs text-muted-foreground mt-4">
-                                            Supported: PDF, DOC, DOCX, TXT, XML, JSON, ZIP, EXE, DEB, SQL, Images, and more
+                                        <p
+                                            class="mt-4 text-xs text-muted-foreground"
+                                        >
+                                            Supported: PDF, DOC, DOCX, TXT, XML,
+                                            JSON, ZIP, EXE, DEB, SQL, Images,
+                                            and more
                                         </p>
                                     </div>
                                 </div>
 
                                 <!-- File Preview -->
                                 <div v-else class="space-y-4">
-                                    <div class="flex items-start justify-between p-4 bg-muted/50 rounded-lg">
+                                    <div
+                                        class="flex items-start justify-between rounded-lg bg-muted/50 p-4"
+                                    >
                                         <div class="flex items-start gap-3">
-                                            <div class="p-2 bg-primary/10 rounded">
-                                                <component :is="fileCategoryIcon" class="h-5 w-5 text-primary" />
+                                            <div
+                                                class="rounded bg-primary/10 p-2"
+                                            >
+                                                <component
+                                                    :is="fileCategoryIcon"
+                                                    class="h-5 w-5 text-primary"
+                                                />
                                             </div>
                                             <div>
-                                                <h4 class="font-medium">{{ selectedFile.name }}</h4>
-                                                <div class="flex items-center gap-2 mt-1">
-                                                    <span class="text-xs text-muted-foreground">
-                                                        {{ formatFileSize(selectedFile.size) }}
+                                                <h4 class="font-medium">
+                                                    {{ selectedFile.name }}
+                                                </h4>
+                                                <div
+                                                    class="mt-1 flex items-center gap-2"
+                                                >
+                                                    <span
+                                                        class="text-xs text-muted-foreground"
+                                                    >
+                                                        {{
+                                                            formatFileSize(
+                                                                selectedFile.size,
+                                                            )
+                                                        }}
                                                     </span>
-                                                    <span class="text-xs text-muted-foreground">•</span>
-                                                    <span class="text-xs text-muted-foreground">
-                                                        {{ selectedFile.type || getFileCategory(selectedFile.name).description }}
+                                                    <span
+                                                        class="text-xs text-muted-foreground"
+                                                        >•</span
+                                                    >
+                                                    <span
+                                                        class="text-xs text-muted-foreground"
+                                                    >
+                                                        {{
+                                                            selectedFile.type ||
+                                                            getFileCategory(
+                                                                selectedFile.name,
+                                                            ).description
+                                                        }}
                                                     </span>
                                                 </div>
                                                 <!-- Recommendation badge -->
-                                                <Badge v-if="recommendedFormat" variant="outline" class="mt-2 text-xs">
-                                                    <CheckCircle2 class="h-3 w-3 mr-1 text-green-600" />
-                                                    Recommended: {{ formatOptions.find(f => f.value === recommendedFormat)?.label }}
+                                                <Badge
+                                                    v-if="recommendedFormat"
+                                                    variant="outline"
+                                                    class="mt-2 text-xs"
+                                                >
+                                                    <CheckCircle2
+                                                        class="mr-1 h-3 w-3 text-green-600"
+                                                    />
+                                                    Recommended:
+                                                    {{
+                                                        formatOptions.find(
+                                                            (f) =>
+                                                                f.value ===
+                                                                recommendedFormat,
+                                                        )?.label
+                                                    }}
                                                 </Badge>
                                             </div>
                                         </div>
-                                        <Button variant="ghost" size="icon" @click="removeFile">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            @click="removeFile"
+                                        >
                                             <X class="h-4 w-4" />
                                         </Button>
                                     </div>
 
                                     <!-- Upload Progress -->
                                     <div v-if="isUploading" class="space-y-2">
-                                        <div class="flex justify-between text-sm">
+                                        <div
+                                            class="flex justify-between text-sm"
+                                        >
                                             <span>Uploading...</span>
                                             <span>{{ uploadProgress }}%</span>
                                         </div>
-                                        <div class="h-2 bg-muted rounded-full overflow-hidden">
-                                            <div class="h-full bg-primary transition-all duration-300"
-                                                :style="{ width: `${uploadProgress}%` }">
-                                            </div>
+                                        <div
+                                            class="h-2 overflow-hidden rounded-full bg-muted"
+                                        >
+                                            <div
+                                                class="h-full bg-primary transition-all duration-300"
+                                                :style="{
+                                                    width: `${uploadProgress}%`,
+                                                }"
+                                            ></div>
                                         </div>
                                     </div>
                                 </div>
@@ -434,7 +532,9 @@ const fileCategoryIcon = computed(() => {
                             <CardContent class="space-y-4">
                                 <!-- Signing Reason -->
                                 <div class="space-y-2">
-                                    <Label for="signing_reason">Reason for signing</Label>
+                                    <Label for="signing_reason"
+                                        >Reason for signing</Label
+                                    >
                                     <Textarea
                                         id="signing_reason"
                                         v-model="form.signing_reason"
@@ -442,16 +542,21 @@ const fileCategoryIcon = computed(() => {
                                         rows="3"
                                     />
                                     <p class="text-xs text-muted-foreground">
-                                        Optional: Explain why you're signing this document
+                                        Optional: Explain why you're signing
+                                        this document
                                     </p>
                                 </div>
 
                                 <!-- Location & Contact -->
                                 <div class="grid gap-4 md:grid-cols-2">
                                     <div class="space-y-2">
-                                        <Label for="signing_location">Location</Label>
+                                        <Label for="signing_location"
+                                            >Location</Label
+                                        >
                                         <div class="relative">
-                                            <MapPin class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                            <MapPin
+                                                class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                                            />
                                             <Input
                                                 id="signing_location"
                                                 v-model="form.signing_location"
@@ -461,7 +566,9 @@ const fileCategoryIcon = computed(() => {
                                         </div>
                                     </div>
                                     <div class="space-y-2">
-                                        <Label for="contact_info">Contact information</Label>
+                                        <Label for="contact_info"
+                                            >Contact information</Label
+                                        >
                                         <Input
                                             id="contact_info"
                                             v-model="form.contact_info"
@@ -472,53 +579,117 @@ const fileCategoryIcon = computed(() => {
 
                                 <!-- Signature Format avec guide -->
                                 <div class="space-y-4">
-                                    <div class="flex items-center justify-between">
-                                        <Label for="signature_format">Signature format</Label>
-                                        <Button 
+                                    <div
+                                        class="flex items-center justify-between"
+                                    >
+                                        <Label for="signature_format"
+                                            >Signature format</Label
+                                        >
+                                        <Button
                                             type="button"
-                                            variant="ghost" 
-                                            size="sm" 
+                                            variant="ghost"
+                                            size="sm"
                                             class="gap-1"
-                                            @click="showFormatGuide = !showFormatGuide"
+                                            @click="
+                                                showFormatGuide =
+                                                    !showFormatGuide
+                                            "
                                         >
                                             <HelpCircle class="h-4 w-4" />
-                                            {{ showFormatGuide ? 'Hide guide' : 'Show format guide' }}
+                                            {{
+                                                showFormatGuide
+                                                    ? 'Hide guide'
+                                                    : 'Show format guide'
+                                            }}
                                         </Button>
                                     </div>
 
                                     <!-- Format Guide -->
-                                    <div v-if="showFormatGuide" class="space-y-3 p-4 bg-muted/50 rounded-lg">
-                                        <h4 class="font-medium text-sm">Choose the right format:</h4>
-                                        
-                                        <div v-for="format in formatOptions" :key="format.value" 
-                                            class="flex items-start gap-3 p-3 bg-background rounded-lg border"
-                                            :class="{ 'border-primary': recommendedFormat === format.value }"
+                                    <div
+                                        v-if="showFormatGuide"
+                                        class="space-y-3 rounded-lg bg-muted/50 p-4"
+                                    >
+                                        <h4 class="text-sm font-medium">
+                                            Choose the right format:
+                                        </h4>
+
+                                        <div
+                                            v-for="format in formatOptions"
+                                            :key="format.value"
+                                            class="flex items-start gap-3 rounded-lg border bg-background p-3"
+                                            :class="{
+                                                'border-primary':
+                                                    recommendedFormat ===
+                                                    format.value,
+                                            }"
                                         >
-                                            <div class="p-2 bg-primary/10 rounded shrink-0">
-                                                <component :is="format.icon" class="h-4 w-4 text-primary" />
+                                            <div
+                                                class="shrink-0 rounded bg-primary/10 p-2"
+                                            >
+                                                <component
+                                                    :is="format.icon"
+                                                    class="h-4 w-4 text-primary"
+                                                />
                                             </div>
                                             <div class="flex-1">
-                                                <div class="flex items-center gap-2">
-                                                    <span class="font-medium">{{ format.label }}</span>
-                                                    <Badge v-if="recommendedFormat === format.value" variant="default" class="text-xs">
-                                                        Recommended for this file
+                                                <div
+                                                    class="flex items-center gap-2"
+                                                >
+                                                    <span class="font-medium">{{
+                                                        format.label
+                                                    }}</span>
+                                                    <Badge
+                                                        v-if="
+                                                            recommendedFormat ===
+                                                            format.value
+                                                        "
+                                                        variant="default"
+                                                        class="text-xs"
+                                                    >
+                                                        Recommended for this
+                                                        file
                                                     </Badge>
                                                 </div>
-                                                <p class="text-sm text-muted-foreground mt-1">{{ format.longDescription }}</p>
-                                                <p class="text-xs text-muted-foreground mt-2">
-                                                    <span class="font-medium">Best for:</span> {{ format.useCases }}
+                                                <p
+                                                    class="mt-1 text-sm text-muted-foreground"
+                                                >
+                                                    {{ format.longDescription }}
                                                 </p>
-                                                <p class="text-xs text-muted-foreground">
-                                                    <span class="font-medium">Compatibility:</span> {{ format.compatibility }}
+                                                <p
+                                                    class="mt-2 text-xs text-muted-foreground"
+                                                >
+                                                    <span class="font-medium"
+                                                        >Best for:</span
+                                                    >
+                                                    {{ format.useCases }}
+                                                </p>
+                                                <p
+                                                    class="text-xs text-muted-foreground"
+                                                >
+                                                    <span class="font-medium"
+                                                        >Compatibility:</span
+                                                    >
+                                                    {{ format.compatibility }}
                                                 </p>
                                             </div>
-                                            <Button 
-                                                variant="outline" 
+                                            <Button
+                                                variant="outline"
                                                 size="sm"
-                                                @click="form.signature_format = format.value"
-                                                :disabled="form.signature_format === format.value"
+                                                @click="
+                                                    form.signature_format =
+                                                        format.value
+                                                "
+                                                :disabled="
+                                                    form.signature_format ===
+                                                    format.value
+                                                "
                                             >
-                                                {{ form.signature_format === format.value ? 'Selected' : 'Select' }}
+                                                {{
+                                                    form.signature_format ===
+                                                    format.value
+                                                        ? 'Selected'
+                                                        : 'Select'
+                                                }}
                                             </Button>
                                         </div>
                                     </div>
@@ -526,30 +697,63 @@ const fileCategoryIcon = computed(() => {
                                     <!-- Format Selection -->
                                     <Select v-model="form.signature_format">
                                         <SelectTrigger>
-                                            <SelectValue placeholder="Select a format">
-                                                <template v-if="form.signature_format">
-                                                    <div class="flex items-center gap-2">
-                                                        <component 
-                                                            :is="formatOptions.find(f => f.value === form.signature_format)?.icon" 
-                                                            class="h-4 w-4" 
+                                            <SelectValue
+                                                placeholder="Select a format"
+                                            >
+                                                <template
+                                                    v-if="form.signature_format"
+                                                >
+                                                    <div
+                                                        class="flex items-center gap-2"
+                                                    >
+                                                        <component
+                                                            :is="
+                                                                formatOptions.find(
+                                                                    (f) =>
+                                                                        f.value ===
+                                                                        form.signature_format,
+                                                                )?.icon
+                                                            "
+                                                            class="h-4 w-4"
                                                         />
-                                                        {{ formatOptions.find(f => f.value === form.signature_format)?.label }}
+                                                        {{
+                                                            formatOptions.find(
+                                                                (f) =>
+                                                                    f.value ===
+                                                                    form.signature_format,
+                                                            )?.label
+                                                        }}
                                                     </div>
                                                 </template>
                                             </SelectValue>
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem 
-                                                v-for="format in formatOptions" 
-                                                :key="format.value" 
+                                            <SelectItem
+                                                v-for="format in formatOptions"
+                                                :key="format.value"
                                                 :value="format.value"
                                                 class="py-3"
                                             >
-                                                <div class="flex items-start gap-3">
-                                                    <component :is="format.icon" class="h-4 w-4 mt-1 shrink-0" />
+                                                <div
+                                                    class="flex items-start gap-3"
+                                                >
+                                                    <component
+                                                        :is="format.icon"
+                                                        class="mt-1 h-4 w-4 shrink-0"
+                                                    />
                                                     <div>
-                                                        <div class="font-medium">{{ format.label }}</div>
-                                                        <p class="text-xs text-muted-foreground">{{ format.description }}</p>
+                                                        <div
+                                                            class="font-medium"
+                                                        >
+                                                            {{ format.label }}
+                                                        </div>
+                                                        <p
+                                                            class="text-xs text-muted-foreground"
+                                                        >
+                                                            {{
+                                                                format.description
+                                                            }}
+                                                        </p>
                                                     </div>
                                                 </div>
                                             </SelectItem>
@@ -559,17 +763,49 @@ const fileCategoryIcon = computed(() => {
                                     <!-- Format Info Tooltip -->
                                     <HoverCard v-if="form.signature_format">
                                         <HoverCardTrigger as-child>
-                                            <Button variant="link" size="sm" class="gap-1">
+                                            <Button
+                                                variant="link"
+                                                size="sm"
+                                                class="gap-1"
+                                            >
                                                 <Info class="h-4 w-4" />
                                                 About this format
                                             </Button>
                                         </HoverCardTrigger>
                                         <HoverCardContent class="w-80">
                                             <div class="space-y-2">
-                                                <h4 class="font-medium">{{ formatOptions.find(f => f.value === form.signature_format)?.label }}</h4>
-                                                <p class="text-sm">{{ formatOptions.find(f => f.value === form.signature_format)?.longDescription }}</p>
-                                                <p class="text-sm font-medium mt-2">Use cases:</p>
-                                                <p class="text-sm">{{ formatOptions.find(f => f.value === form.signature_format)?.useCases }}</p>
+                                                <h4 class="font-medium">
+                                                    {{
+                                                        formatOptions.find(
+                                                            (f) =>
+                                                                f.value ===
+                                                                form.signature_format,
+                                                        )?.label
+                                                    }}
+                                                </h4>
+                                                <p class="text-sm">
+                                                    {{
+                                                        formatOptions.find(
+                                                            (f) =>
+                                                                f.value ===
+                                                                form.signature_format,
+                                                        )?.longDescription
+                                                    }}
+                                                </p>
+                                                <p
+                                                    class="mt-2 text-sm font-medium"
+                                                >
+                                                    Use cases:
+                                                </p>
+                                                <p class="text-sm">
+                                                    {{
+                                                        formatOptions.find(
+                                                            (f) =>
+                                                                f.value ===
+                                                                form.signature_format,
+                                                        )?.useCases
+                                                    }}
+                                                </p>
                                             </div>
                                         </HoverCardContent>
                                     </HoverCard>
@@ -578,13 +814,21 @@ const fileCategoryIcon = computed(() => {
                                 <!-- Expiration & Visual Options -->
                                 <div class="grid gap-4 md:grid-cols-2">
                                     <div class="space-y-2">
-                                        <Label for="expires_in_days">Valid for</Label>
+                                        <Label for="expires_in_days"
+                                            >Valid for</Label
+                                        >
                                         <Select v-model="form.expires_in_days">
                                             <SelectTrigger>
-                                                <SelectValue placeholder="Select expiration" />
+                                                <SelectValue
+                                                    placeholder="Select expiration"
+                                                />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem v-for="option in expirationOptions" :key="option.value" :value="option.value">
+                                                <SelectItem
+                                                    v-for="option in expirationOptions"
+                                                    :key="option.value"
+                                                    :value="option.value"
+                                                >
                                                     {{ option.label }}
                                                 </SelectItem>
                                             </SelectContent>
@@ -592,22 +836,39 @@ const fileCategoryIcon = computed(() => {
                                     </div>
 
                                     <!-- Visual Signature Option (PDF only) -->
-                                    <div v-if="selectedFile?.name.toLowerCase().endsWith('.pdf')" 
-                                        class="flex items-center space-x-2 pt-8">
-                                        <Checkbox 
-                                            id="include_visual" 
-                                            v-model:checked="form.include_visual"
+                                    <div
+                                        v-if="
+                                            selectedFile?.name
+                                                .toLowerCase()
+                                                .endsWith('.pdf')
+                                        "
+                                        class="flex items-center space-x-2 pt-8"
+                                    >
+                                        <Checkbox
+                                            id="include_visual"
+                                            v-model:checked="
+                                                form.include_visual
+                                            "
                                         />
-                                        <Label for="include_visual" class="text-sm font-normal cursor-pointer">
+                                        <Label
+                                            for="include_visual"
+                                            class="cursor-pointer text-sm font-normal"
+                                        >
                                             Include visual signature
                                         </Label>
                                         <TooltipProvider>
                                             <Tooltip>
                                                 <TooltipTrigger>
-                                                    <Info class="h-4 w-4 text-muted-foreground" />
+                                                    <Info
+                                                        class="h-4 w-4 text-muted-foreground"
+                                                    />
                                                 </TooltipTrigger>
                                                 <TooltipContent>
-                                                    <p class="max-w-xs">Adds a visible signature block to the PDF document</p>
+                                                    <p class="max-w-xs">
+                                                        Adds a visible signature
+                                                        block to the PDF
+                                                        document
+                                                    </p>
                                                 </TooltipContent>
                                             </Tooltip>
                                         </TooltipProvider>
@@ -631,12 +892,23 @@ const fileCategoryIcon = computed(() => {
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div v-if="keys.length === 0" class="text-center py-6">
-                                    <div class="p-3 bg-muted rounded-full inline-block mb-3">
-                                        <KeyRound class="h-6 w-6 text-muted-foreground" />
+                                <div
+                                    v-if="keys.length === 0"
+                                    class="py-6 text-center"
+                                >
+                                    <div
+                                        class="mb-3 inline-block rounded-full bg-muted p-3"
+                                    >
+                                        <KeyRound
+                                            class="h-6 w-6 text-muted-foreground"
+                                        />
                                     </div>
-                                    <h3 class="font-medium mb-1">No keys available</h3>
-                                    <p class="text-sm text-muted-foreground mb-4">
+                                    <h3 class="mb-1 font-medium">
+                                        No keys available
+                                    </h3>
+                                    <p
+                                        class="mb-4 text-sm text-muted-foreground"
+                                    >
                                         You need to generate a key pair first
                                     </p>
                                     <Button as-child>
@@ -647,41 +919,82 @@ const fileCategoryIcon = computed(() => {
                                 </div>
 
                                 <div v-else class="space-y-3">
-                                    <div v-for="key in keys" :key="key.id" 
-                                        class="relative flex items-start p-3 rounded-lg border cursor-pointer transition-colors"
+                                    <div
+                                        v-for="key in keys"
+                                        :key="key.id"
+                                        class="relative flex cursor-pointer items-start rounded-lg border p-3 transition-colors"
                                         :class="{
-                                            'border-primary bg-primary/5': form.key_pair_id === key.id,
-                                            'border-border hover:border-muted-foreground/50': form.key_pair_id !== key.id
+                                            'border-primary bg-primary/5':
+                                                form.key_pair_id === key.id,
+                                            'border-border hover:border-muted-foreground/50':
+                                                form.key_pair_id !== key.id,
                                         }"
                                         @click="form.key_pair_id = key.id"
                                     >
                                         <div class="flex-1">
-                                            <div class="flex items-center gap-2">
-                                                <span class="font-medium">{{ key.key_name }}</span>
-                                                <Badge v-if="key.is_default" variant="outline" class="text-xs">
+                                            <div
+                                                class="flex items-center gap-2"
+                                            >
+                                                <span class="font-medium">{{
+                                                    key.key_name
+                                                }}</span>
+                                                <Badge
+                                                    v-if="key.is_default"
+                                                    variant="outline"
+                                                    class="text-xs"
+                                                >
                                                     Default
                                                 </Badge>
                                             </div>
-                                            <div class="flex items-center gap-2 mt-1">
-                                                <Badge :class="getAlgorithmColor(key.algorithm_used)">
-                                                    {{ key.algorithm_used }} {{ key.key_size }}
+                                            <div
+                                                class="mt-1 flex items-center gap-2"
+                                            >
+                                                <Badge
+                                                    :class="
+                                                        getAlgorithmColor(
+                                                            key.algorithm_used,
+                                                        )
+                                                    "
+                                                >
+                                                    {{ key.algorithm_used }}
+                                                    {{ key.key_size }}
                                                 </Badge>
-                                                <span class="text-xs text-muted-foreground">
-                                                    {{ key.fingerprint?.substring(0, 12) }}...
+                                                <span
+                                                    class="text-xs text-muted-foreground"
+                                                >
+                                                    {{
+                                                        key.fingerprint?.substring(
+                                                            0,
+                                                            12,
+                                                        )
+                                                    }}...
                                                 </span>
                                             </div>
                                         </div>
-                                        <div class="absolute right-3 top-3">
-                                            <div v-if="form.key_pair_id === key.id" 
-                                                class="h-5 w-5 rounded-full bg-primary flex items-center justify-center">
-                                                <CheckCircle2 class="h-3 w-3 text-white" />
+                                        <div class="absolute top-3 right-3">
+                                            <div
+                                                v-if="
+                                                    form.key_pair_id === key.id
+                                                "
+                                                class="flex h-5 w-5 items-center justify-center rounded-full bg-primary"
+                                            >
+                                                <CheckCircle2
+                                                    class="h-3 w-3 text-white"
+                                                />
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </CardContent>
-                            <CardFooter v-if="keys.length > 0" class="border-t pt-6">
-                                <Button variant="outline" as-child class="w-full">
+                            <CardFooter
+                                v-if="keys.length > 0"
+                                class="border-t pt-6"
+                            >
+                                <Button
+                                    variant="outline"
+                                    as-child
+                                    class="w-full"
+                                >
                                     <Link :href="route('keys.create')">
                                         + Generate New Key
                                     </Link>
@@ -696,41 +1009,95 @@ const fileCategoryIcon = computed(() => {
                             </CardHeader>
                             <CardContent class="space-y-3">
                                 <div class="flex justify-between text-sm">
-                                    <span class="text-muted-foreground">Document:</span>
-                                    <span class="font-medium truncate max-w-[150px]">{{ selectedFile.name }}</span>
+                                    <span class="text-muted-foreground"
+                                        >Document:</span
+                                    >
+                                    <span
+                                        class="max-w-[150px] truncate font-medium"
+                                        >{{ selectedFile.name }}</span
+                                    >
                                 </div>
                                 <div class="flex justify-between text-sm">
-                                    <span class="text-muted-foreground">Signing key:</span>
-                                    <span class="font-medium">{{ keys.find(k => k.id === form.key_pair_id)?.key_name }}</span>
+                                    <span class="text-muted-foreground"
+                                        >Signing key:</span
+                                    >
+                                    <span class="font-medium">{{
+                                        keys.find(
+                                            (k) => k.id === form.key_pair_id,
+                                        )?.key_name
+                                    }}</span>
                                 </div>
                                 <div class="flex justify-between text-sm">
-                                    <span class="text-muted-foreground">Format:</span>
-                                    <span class="font-medium">{{ formatOptions.find(f => f.value === form.signature_format)?.label }}</span>
+                                    <span class="text-muted-foreground"
+                                        >Format:</span
+                                    >
+                                    <span class="font-medium">{{
+                                        formatOptions.find(
+                                            (f) =>
+                                                f.value ===
+                                                form.signature_format,
+                                        )?.label
+                                    }}</span>
                                 </div>
-                                <div v-if="form.signature_format === 'pdf'" class="flex justify-between text-sm">
-                                    <span class="text-muted-foreground">Visual signature:</span>
-                                    <span class="font-medium">{{ form.include_visual ? 'Yes' : 'No' }}</span>
+                                <div
+                                    v-if="form.signature_format === 'pdf'"
+                                    class="flex justify-between text-sm"
+                                >
+                                    <span class="text-muted-foreground"
+                                        >Visual signature:</span
+                                    >
+                                    <span class="font-medium">{{
+                                        form.include_visual ? 'Yes' : 'No'
+                                    }}</span>
                                 </div>
                                 <div class="flex justify-between text-sm">
-                                    <span class="text-muted-foreground">Expires:</span>
+                                    <span class="text-muted-foreground"
+                                        >Expires:</span
+                                    >
                                     <span class="font-medium">
-                                        {{ form.expires_in_days === 0 ? 'Never' : `in ${form.expires_in_days} days` }}
+                                        {{
+                                            form.expires_in_days === 0
+                                                ? 'Never'
+                                                : `in ${form.expires_in_days} days`
+                                        }}
                                     </span>
                                 </div>
-                                <div v-if="form.signing_location" class="flex justify-between text-sm">
-                                    <span class="text-muted-foreground">Location:</span>
-                                    <span class="font-medium">{{ form.signing_location }}</span>
+                                <div
+                                    v-if="form.signing_location"
+                                    class="flex justify-between text-sm"
+                                >
+                                    <span class="text-muted-foreground"
+                                        >Location:</span
+                                    >
+                                    <span class="font-medium">{{
+                                        form.signing_location
+                                    }}</span>
                                 </div>
                             </CardContent>
                             <CardFooter>
-                                <Button 
-                                    type="submit" 
-                                    class="w-full" 
-                                    :disabled="form.processing || !selectedFile || !form.key_pair_id || !form.signature_format"
+                                <Button
+                                    type="submit"
+                                    class="w-full"
+                                    :disabled="
+                                        form.processing ||
+                                        !selectedFile ||
+                                        !form.key_pair_id ||
+                                        !form.signature_format
+                                    "
                                 >
-                                    <Loader2 v-if="form.processing" class="mr-2 h-4 w-4 animate-spin" />
-                                    <FileSignature v-else class="mr-2 h-4 w-4" />
-                                    {{ form.processing ? 'Signing...' : 'Sign Document' }}
+                                    <Loader2
+                                        v-if="form.processing"
+                                        class="mr-2 h-4 w-4 animate-spin"
+                                    />
+                                    <FileSignature
+                                        v-else
+                                        class="mr-2 h-4 w-4"
+                                    />
+                                    {{
+                                        form.processing
+                                            ? 'Signing...'
+                                            : 'Sign Document'
+                                    }}
                                 </Button>
                             </CardFooter>
                         </Card>
@@ -740,7 +1107,8 @@ const fileCategoryIcon = computed(() => {
                             <Info class="h-4 w-4" />
                             <AlertTitle>Ready to sign</AlertTitle>
                             <AlertDescription>
-                                Upload a document to start the signing process. We'll recommend the best format for your file.
+                                Upload a document to start the signing process.
+                                We'll recommend the best format for your file.
                             </AlertDescription>
                         </Alert>
                     </div>

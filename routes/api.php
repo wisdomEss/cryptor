@@ -1,7 +1,7 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\PublicSignatures\PublicSignaturesController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -16,6 +16,7 @@ use App\Http\Controllers\PublicSignatures\PublicSignaturesController;
 
 // Routes API publiques (sans authentification)
 Route::post('/public/verify', [PublicSignaturesController::class, 'verify'])
+    ->middleware('throttle:20,1')
     ->name('api.public.verify');
 
 // Vous pouvez ajouter d'autres routes API ici

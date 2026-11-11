@@ -20,24 +20,24 @@ return new class extends Migration
             // Informations d'authentification
             $table->string('username')->unique();
             $table->string('phone_number')->nullable();
-            
+
             // Sécurité et état
             $table->boolean('is_active')->default(true);
             $table->boolean('is_email_verified')->default(false);
             $table->boolean('two_factor_enabled')->default(false);
             $table->enum('role', ['user', 'admin', 'auditor'])->default('user');
-            
+
             // Timestamps
             $table->timestamp('last_login')->nullable();
             $table->timestamp('last_password_change')->useCurrent();
             $table->unsignedInteger('failed_login_attempts')->default(0);
             $table->timestamp('account_locked_until')->nullable();
-            
+
             // Métadonnées
             $table->string('timezone')->default('UTC');
             $table->string('language', 10)->default('fr');
             $table->json('preferences')->nullable();
-            
+
             // Timestamps Laravel
             $table->timestamps();
             $table->softDeletes();
@@ -45,9 +45,8 @@ return new class extends Migration
             // Index
             $table->index(['is_active', 'role']);
             $table->index('email');
-        
 
-            // 
+            //
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {

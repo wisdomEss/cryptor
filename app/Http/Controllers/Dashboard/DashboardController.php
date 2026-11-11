@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
+use App\Models\FileSigned;
 use App\Models\KeyPair;
 use App\Models\Signature;
-use App\Models\FileSigned;
 use App\Models\SignatureVerification;
-use Illuminate\Http\Request;
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -37,15 +39,15 @@ class DashboardController extends Controller
             ->get();
 
         // Statistiques des vérifications
-        $totalVerifications = SignatureVerification::whereHas('signature', function($q) use ($userId) {
+        $totalVerifications = SignatureVerification::whereHas('signature', function ($q) use ($userId) {
             $q->where('signer_id', $userId);
         })->count();
 
-        $successfulVerifications = SignatureVerification::whereHas('signature', function($q) use ($userId) {
+        $successfulVerifications = SignatureVerification::whereHas('signature', function ($q) use ($userId) {
             $q->where('signer_id', $userId);
         })->where('result', true)->count();
 
-        $publicVerifications = SignatureVerification::whereHas('signature', function($q) use ($userId) {
+        $publicVerifications = SignatureVerification::whereHas('signature', function ($q) use ($userId) {
             $q->where('signer_id', $userId);
         })->where('is_public_verification', true)->count();
 
@@ -55,7 +57,7 @@ class DashboardController extends Controller
             ->latest('signed_at')
             ->limit(5)
             ->get()
-            ->map(function($sig) {
+            ->map(function ($sig) {
                 return [
                     'id' => $sig->id,
                     'file_name' => $sig->file->original_file_name,
@@ -66,21 +68,21 @@ class DashboardController extends Controller
             });
 
         // Statistiques par mois (pour les graphiques)
-        $signaturesByMonth = Signature::where('signer_id', $userId)
-            ->select(DB::raw('DATE_FORMAT(signed_at, "%Y-%m") as month'), DB::raw('count(*) as total'))
-            ->where('signed_at', '>=', now()->subMonths(6))
-            ->groupBy('month')
-            ->orderBy('month')
-            ->get();
+        // Regroupement fait en PHP plutôt qu'en SQL (DATE_FORMAT n'existe pas
+        // sur tous les moteurs, ex. SQLite utilisé par les tests).
+        $signaturesByMonth = $this->groupCountByMonth(
+            Signature::where('signer_id', $userId)
+                ->where('signed_at', '>=', now()->subMonths(6))
+                ->pluck('signed_at')
+        );
 
-        $verificationsByMonth = SignatureVerification::whereHas('signature', function($q) use ($userId) {
-            $q->where('signer_id', $userId);
-        })
-        ->select(DB::raw('DATE_FORMAT(verified_at, "%Y-%m") as month'), DB::raw('count(*) as total'))
-        ->where('verified_at', '>=', now()->subMonths(6))
-        ->groupBy('month')
-        ->orderBy('month')
-        ->get();
+        $verificationsByMonth = $this->groupCountByMonth(
+            SignatureVerification::whereHas('signature', function ($q) use ($userId) {
+                $q->where('signer_id', $userId);
+            })
+                ->where('verified_at', '>=', now()->subMonths(6))
+                ->pluck('verified_at')
+        );
 
         // Répartition par algorithme
         $algorithms = KeyPair::where('user_id', $userId)
@@ -96,8 +98,8 @@ class DashboardController extends Controller
             ->count();
 
         // Taux de succès des vérifications
-        $verificationSuccessRate = $totalVerifications > 0 
-            ? round(($successfulVerifications / $totalVerifications) * 100, 2) 
+        $verificationSuccessRate = $totalVerifications > 0
+            ? round(($successfulVerifications / $totalVerifications) * 100, 2)
             : 0;
 
         return Inertia::render('Dashboard', [
@@ -110,12 +112,12 @@ class DashboardController extends Controller
                     'fingerprint' => $this->generateFingerprint($defaultKey->public_key),
                 ] : null,
                 'expiringKeys' => $expiringKeys,
-                
+
                 'totalSignatures' => $totalSignatures,
                 'validSignatures' => $validSignatures,
                 'pendingSignatures' => $pendingSignatures,
                 'revokedSignatures' => $revokedSignatures,
-                
+
                 'totalFiles' => $totalFiles,
                 'totalVerifications' => $totalVerifications,
                 'successfulVerifications' => $successfulVerifications,
@@ -128,7 +130,7 @@ class DashboardController extends Controller
                 'verificationsByMonth' => $verificationsByMonth,
                 'algorithms' => $algorithms,
             ],
-            'recentFiles' => $recentFiles->map(function($file) {
+            'recentFiles' => $recentFiles->map(function ($file) {
                 return [
                     'id' => $file->id,
                     'name' => $file->original_file_name,
@@ -148,7 +150,25 @@ class DashboardController extends Controller
         $key = preg_replace('/-----(BEGIN|END) (PUBLIC|PRIVATE) KEY-----/', '', $publicKey);
         $key = preg_replace('/\s+/', '', $key);
         $hash = hash('sha256', $key);
+
         return implode(':', str_split(substr(strtoupper($hash), 0, 16), 2));
+    }
+
+    /**
+     * Regroupe une collection de dates par mois (format Y-m) et compte les
+     * occurrences, indépendamment du moteur de base de données.
+     *
+     * @param  Collection<int, CarbonInterface|string|null>  $dates
+     */
+    private function groupCountByMonth($dates)
+    {
+        return $dates
+            ->filter()
+            ->map(fn ($date) => Carbon::parse($date)->format('Y-m'))
+            ->countBy()
+            ->map(fn ($total, $month) => ['month' => $month, 'total' => $total])
+            ->sortKeys()
+            ->values();
     }
 
     /**
@@ -156,10 +176,13 @@ class DashboardController extends Controller
      */
     private function formatFileSize($bytes)
     {
-        if ($bytes === 0) return '0 Bytes';
+        if ($bytes === 0) {
+            return '0 Bytes';
+        }
         $k = 1024;
         $sizes = ['Bytes', 'KB', 'MB', 'GB'];
         $i = floor(log($bytes) / log($k));
-        return round($bytes / pow($k, $i), 2) . ' ' . $sizes[$i];
+
+        return round($bytes / pow($k, $i), 2).' '.$sizes[$i];
     }
 }

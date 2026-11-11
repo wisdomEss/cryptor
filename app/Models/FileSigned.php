@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 
 class FileSigned extends Model
 {
@@ -28,7 +29,10 @@ class FileSigned extends Model
         'status',
         'total_signatures_needed',
         'expires_at',
-        'retention_period'
+        'retention_period',
+        'metadata',
+        'upload_ip',
+        'upload_user_agent',
     ];
 
     protected $casts = [
@@ -38,7 +42,8 @@ class FileSigned extends Model
         'signatures_count' => 'integer',
         'retention_period' => 'integer',
         'expires_at' => 'datetime',
-        'deleted_at' => 'datetime'
+        'deleted_at' => 'datetime',
+        'metadata' => 'array',
     ];
 
     protected $appends = ['is_expired', 'is_fully_signed'];
@@ -84,7 +89,10 @@ class FileSigned extends Model
 
     public function getFilePathAttribute($value): string
     {
-        return storage_path('app/' . $value);
+        // Le fichier est stocké sur le disque 'local' (storage/app/private), pas
+        // directement sous storage/app : on passe par le disque pour avoir le
+        // bon chemin quelle que soit la configuration.
+        return Storage::disk('local')->path($value);
     }
 
     // Scopes
@@ -108,13 +116,13 @@ class FileSigned extends Model
     public function addSignatureCount(): void
     {
         $this->increment('signatures_count');
-        
+
         if ($this->signatures_count >= $this->total_signatures_needed) {
             $this->status = 'fully_signed';
         } else {
             $this->status = 'partially_signed';
         }
-        
+
         $this->save();
     }
 }

@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Verifications;
 
 use App\Http\Controllers\Controller;
+use App\Models\FileSigned;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
-use App\Models\FileSigned;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +22,7 @@ class VerificationController extends Controller
             'signature' => function ($q) {
                 $q->with(['file', 'signer']);
             },
-            'verifier'
+            'verifier',
         ])
             ->whereHas('signature', function ($q) {
                 $q->where('signer_id', Auth::id()) // Verifications of user's signatures
@@ -124,14 +124,13 @@ class VerificationController extends Controller
             });
 
         return inertia('verifications/Create', [
-            'recentSignatures' => $recentSignatures
+            'recentSignatures' => $recentSignatures,
         ]);
     }
 
     /**
      * Vérification d'un document signé dans notre système
      */
-
     public function store(Request $request)
     {
         $request->validate([
@@ -158,7 +157,7 @@ class VerificationController extends Controller
                 })
                 ->first();
 
-            $isExternalVerification = !$fileSigned;
+            $isExternalVerification = ! $fileSigned;
 
             $result = $isExternalVerification
                 ? $this->verifyExternalDocument($file, $signatureFile, $request, $startTime)
@@ -174,13 +173,13 @@ class VerificationController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
 
-            \Log::error('Verification failed: ' . $e->getMessage());
+            \Log::error('Verification failed: '.$e->getMessage());
 
             return Inertia::render('verifications/Create', [
                 'recentSignatures' => $this->getRecentSignatures(),
                 'verificationResult' => [
                     'success' => false,
-                    'message' => 'Verification failed: ' . $e->getMessage(),
+                    'message' => 'Verification failed: '.$e->getMessage(),
                     'details' => [],
                 ],
             ]);
@@ -194,7 +193,7 @@ class VerificationController extends Controller
             ->latest()
             ->first();
 
-        if (!$signature) {
+        if (! $signature) {
             throw new \Exception('No signature found for this document.');
         }
 
@@ -218,19 +217,19 @@ class VerificationController extends Controller
             'expected_hash' => $fileSigned->file_hash,
             'result' => $verificationSuccess,
             'verification_type' => $signatureFile ? 'signature' : 'hash',
-            'verification_details' => json_encode([
+            'verification_details' => [
                 'document_integrity' => $documentIntegrity,
                 'signature_valid' => $signatureValid,
                 'key_valid' => $keyValid,
                 'format' => $signature->signature_format,
                 'algorithm' => $signature->algorithm_used,
-            ]),
+            ],
             'signature_timestamp' => $signature->signed_at,
             'document_timestamp' => $fileSigned->created_at,
             'verifier_ip' => $request->ip(),
             'verifier_user_agent' => $request->userAgent(),
             'verification_duration_ms' => round((microtime(true) - $startTime) * 1000),
-            'is_public_verification' => !auth()->check(),
+            'is_public_verification' => ! auth()->check(),
         ]);
 
         if ($request->include_details) {
@@ -259,7 +258,6 @@ class VerificationController extends Controller
         ];
     }
 
-
     private function getRecentSignatures()
     {
         return Signature::with(['file', 'signer'])
@@ -278,14 +276,14 @@ class VerificationController extends Controller
 
     private function verifyExternalDocument($file, $signatureFile, $request, $startTime)
     {
-        if (!$signatureFile) {
+        if (! $signatureFile) {
             throw new \Exception('Signature file is required for external document verification.');
         }
 
         $signatureContent = file_get_contents($signatureFile->getRealPath());
         $signatureData = $this->parseExternalSignature($signatureContent);
 
-        if (!$signatureData || !isset($signatureData['signature']) || !isset($signatureData['public_key'])) {
+        if (! $signatureData || ! isset($signatureData['signature']) || ! isset($signatureData['public_key'])) {
             throw new \Exception('Invalid signature format.');
         }
 
@@ -305,14 +303,14 @@ class VerificationController extends Controller
             'expected_hash' => $signatureData['file_hash'] ?? null,
             'result' => $signatureValid,
             'verification_type' => 'external',
-            'verification_details' => json_encode([
-                'external' => true
-            ]),
+            'verification_details' => [
+                'external' => true,
+            ],
             'signature_timestamp' => $signatureData['timestamp'] ?? null,
             'verifier_ip' => $request->ip(),
             'verifier_user_agent' => $request->userAgent(),
             'verification_duration_ms' => round((microtime(true) - $startTime) * 1000),
-            'is_public_verification' => !auth()->check(),
+            'is_public_verification' => ! auth()->check(),
         ]);
 
         return [
@@ -323,7 +321,7 @@ class VerificationController extends Controller
             'details' => [
                 'signature_valid' => $signatureValid,
                 'document_integrity' => true,
-                'external' => true
+                'external' => true,
             ],
             'id' => $verification->id,
         ];
@@ -352,21 +350,20 @@ class VerificationController extends Controller
                     return $this->verifyBasicSignature($signature, $file);
             }
         } catch (\Exception $e) {
-            \Log::error('Signature verification error: ' . $e->getMessage());
+            \Log::error('Signature verification error: '.$e->getMessage());
+
             return false;
         }
     }
 
-
     /**
      * Vérification signature PAdES (PDF)
      */
-
     private function verifyPadesSignature($signature, $file)
     {
         $signatureData = json_decode($signature->signature_value, true);
 
-        if (!$signatureData || !isset($signatureData['signature'])) {
+        if (! $signatureData || ! isset($signatureData['signature'])) {
             return false;
         }
 
@@ -374,7 +371,7 @@ class VerificationController extends Controller
 
         $keyPair = $signature->keyPair;
         // dd($keyPair);
-        if (!$keyPair || !$keyPair->public_key) {
+        if (! $keyPair || ! $keyPair->public_key) {
             return false;
         }
 
@@ -389,12 +386,11 @@ class VerificationController extends Controller
     /**
      * Vérification signature CMS
      */
-
     private function verifyCmsSignature($signature, $file)
     {
         $signatureData = json_decode($signature->signature_value, true);
 
-        if (!$signatureData || !isset($signatureData['signature'])) {
+        if (! $signatureData || ! isset($signatureData['signature'])) {
             return false;
         }
 
@@ -412,7 +408,7 @@ class VerificationController extends Controller
 
         $keyPair = $signature->keyPair;
         // dd($keyPair);
-        if (!$keyPair || !$keyPair->public_key) {
+        if (! $keyPair || ! $keyPair->public_key) {
             return false;
         }
 
@@ -427,13 +423,12 @@ class VerificationController extends Controller
     /**
      * Vérification signature basique
      */
-
     private function verifyBasicSignature($signature, $file)
     {
         $fileContent = file_get_contents($file->getRealPath());
 
         $keyPair = $signature->keyPair;
-        if (!$keyPair || !$keyPair->public_key) {
+        if (! $keyPair || ! $keyPair->public_key) {
             return false;
         }
 
@@ -462,7 +457,7 @@ class VerificationController extends Controller
             return [
                 'format' => 'PKCS7',
                 'signature' => base64_encode($content),
-                'certificates' => $certificates
+                'certificates' => $certificates,
             ];
         }
 
@@ -476,6 +471,7 @@ class VerificationController extends Controller
     {
         $key = preg_replace('/-----(BEGIN|END) (PUBLIC|PRIVATE) KEY-----/', '', $publicKey);
         $key = preg_replace('/\s+/', '', $key);
+
         return substr(hash('sha256', $key), 0, 16);
     }
 
@@ -488,15 +484,15 @@ class VerificationController extends Controller
             return 'The document is authentic and the signature is valid.';
         }
 
-        if (!$documentIntegrity && !$signatureValid) {
+        if (! $documentIntegrity && ! $signatureValid) {
             return 'The document has been modified and the signature is invalid.';
         }
 
-        if (!$documentIntegrity) {
+        if (! $documentIntegrity) {
             return 'The document has been modified since it was signed.';
         }
 
-        if (!$signatureValid) {
+        if (! $signatureValid) {
             return 'The signature is invalid or has been tampered with.';
         }
 
@@ -513,7 +509,7 @@ class VerificationController extends Controller
             ->firstOrFail();
 
         return inertia('verifications/Public', [
-            'verification' => $verification
+            'verification' => $verification,
         ]);
     }
 
@@ -522,16 +518,28 @@ class VerificationController extends Controller
      */
     public function show($id)
     {
+        $userId = Auth::id();
+
+        // Sécurité : seule la personne qui a demandé la vérification, qui a
+        // signé le document, qui l'a uploadé, ou qui a réalisé la vérification
+        // elle-même, peut la consulter.
         $verification = SignatureVerification::with([
             'signature.file',
             'signature.signer',
             'signature.keyPair',
-            'verifier'
-        ])->findOrFail($id);
+            'verifier',
+        ])
+            ->where(function ($query) use ($userId) {
+                $query->where('verifier_id', $userId)
+                    ->orWhereHas('signature', function ($q) use ($userId) {
+                        $q->where('signer_id', $userId)
+                            ->orWhereHas('file', fn ($fq) => $fq->where('uploader_id', $userId));
+                    });
+            })
+            ->findOrFail($id);
 
         return inertia('verifications/Show', [
-            'verification' => $verification
+            'verification' => $verification,
         ]);
     }
-
 }

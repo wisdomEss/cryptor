@@ -76,7 +76,9 @@ class ProfileUpdateTest extends TestCase
             ->assertRedirect(route('home'));
 
         $this->assertGuest();
-        $this->assertNull($user->fresh());
+        // User utilise SoftDeletes (pour préserver l'historique des signatures
+        // et des clés associées) : le compte est marqué supprimé, pas effacé.
+        $this->assertTrue($user->fresh()->trashed());
     }
 
     public function test_correct_password_must_be_provided_to_delete_account()

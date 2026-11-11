@@ -1,17 +1,17 @@
 <?php
 
 namespace App\Http\Controllers\Keys;
+
 use App\Http\Controllers\Controller;
 use App\Models\KeyPair;
-use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Illuminate\Support\Str;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Inertia\Inertia;
+
 class KeyController extends Controller
 {
-
     public function index()
     {
         $keys = KeyPair::where('user_id', auth()->id())
@@ -35,7 +35,7 @@ class KeyController extends Controller
             });
 
         return Inertia::render('keys/Index', [
-            'keys' => $keys
+            'keys' => $keys,
         ]);
     }
 
@@ -63,13 +63,13 @@ class KeyController extends Controller
         );
         // en principe si l'utilisateur ne fournie pas le certificat on cree mais ce n'est pas encore gerer
         $certData = $this->generateCertificate(
-                $keyPair['private_key'],
-                $validated['key_name'],
-                $validated['valid_days'] ?? 30
-            );
+            $keyPair['private_key'],
+            $validated['key_name'],
+            $validated['valid_days'] ?? 30
+        );
 
-            $certificate = $certData['certificate'];
-            $issuer = $certData['issuer'];
+        $certificate = $certData['certificate'];
+        $issuer = $certData['issuer'];
 
         // Générer un identifiant unique pour la clé
         $keyIdentifier = Str::uuid()->toString();
@@ -80,9 +80,6 @@ class KeyController extends Controller
             ? Carbon::now()->addDays((int) $validated['valid_days'])
             : null;
 
-
-
-
         // Si set_as_default est true, enlever le default des autres clés
         if ($validated['set_as_default'] ?? false) {
             KeyPair::where('user_id', Auth::id())
@@ -90,13 +87,13 @@ class KeyController extends Controller
                 ->update(['is_default' => false]);
         }
 
-        // Créer la clé
+        // Créer la clé (la clé privée est chiffrée automatiquement par le cast
+        // 'encrypted' du modèle KeyPair, private_key_iv n'est plus utilisé).
         $key = KeyPair::create([
             'user_id' => Auth::id(),
             'key_name' => $validated['key_name'],
             'public_key' => $keyPair['public_key'],
             'private_key' => $keyPair['private_key'],
-            'private_key_iv' => $keyPair['iv'] ?? null,
             'algorithm_used' => $validated['algorithm'],
             'key_size' => $keyPair['key_size'] ?? $validated['key_size'] ?? 2048,
             'key_identifier' => $keyIdentifier,
@@ -107,6 +104,8 @@ class KeyController extends Controller
             'valid_to' => $validTo,
             'certificate_data' => $certificate ?? null,
             'certificate_issuer' => $issuer ?? null,
+            'created_by_ip' => $request->ip(),
+            'created_by_user_agent' => $request->userAgent(),
         ]);
 
         return redirect()->route('keys.index')
@@ -152,7 +151,6 @@ class KeyController extends Controller
                     'key_size' => 256,
                 ];
 
-            
             default:
                 throw new \Exception('Unsupported algorithm');
         }
@@ -162,6 +160,7 @@ class KeyController extends Controller
     {
         // Génère une empreinte SHA-256 de la clé publique et prend les 8 premiers octets
         $hash = hash('sha256', $publicKey);
+
         return implode(':', str_split(substr($hash, 0, 16), 2));
     }
 
@@ -170,20 +169,20 @@ class KeyController extends Controller
 
         // DN (Distinguished Name)
         $dn = [
-            "countryName" => "MA",
-            "stateOrProvinceName" => "Souss-Massa",
-            "localityName" => "Taroudant",
-            "organizationName" => "CRYPTOR",
-            "organizationalUnitName" => "PKI Department",
-            "commonName" => $commonName,
-            "emailAddress" => Auth::user()->email ?? "cryptor@gmail.com",
+            'countryName' => 'MA',
+            'stateOrProvinceName' => 'Souss-Massa',
+            'localityName' => 'Taroudant',
+            'organizationName' => 'CRYPTOR',
+            'organizationalUnitName' => 'PKI Department',
+            'commonName' => $commonName,
+            'emailAddress' => Auth::user()->email ?? 'cryptor@gmail.com',
         ];
 
         // Charger la clé privée
         $privateKey = openssl_pkey_get_private($privateKeyPem);
 
-        if (!$privateKey) {
-            throw new \Exception("Invalid private key provided.");
+        if (! $privateKey) {
+            throw new \Exception('Invalid private key provided.');
         }
 
         // Générer la CSR (Certificate Signing Request)
@@ -195,8 +194,8 @@ class KeyController extends Controller
             ]
         );
 
-        if (!$csr) {
-            throw new \Exception("Failed to generate CSR.");
+        if (! $csr) {
+            throw new \Exception('Failed to generate CSR.');
         }
 
         // Auto-signature du certificat
@@ -207,8 +206,8 @@ class KeyController extends Controller
             $validDays
         );
 
-        if (!$x509) {
-            throw new \Exception("Failed to sign certificate.");
+        if (! $x509) {
+            throw new \Exception('Failed to sign certificate.');
         }
 
         // Exporter certificat en PEM
@@ -216,14 +215,13 @@ class KeyController extends Controller
 
         return [
             'certificate' => $certificatePem,
-            'issuer' => "CRYPTOR Internal CA",
+            'issuer' => 'CRYPTOR Internal CA',
             'valid_from' => now(),
             'valid_to' => now()->addDays($validDays),
         ];
     }
 
     public function revoked()
-   
     {
         $keys = KeyPair::where('user_id', auth()->id())
             ->where('is_revoked', true)
@@ -241,7 +239,7 @@ class KeyController extends Controller
             });
 
         return Inertia::render('keys/Revoke', [
-            'keys' => $keys
+            'keys' => $keys,
         ]);
     }
 
@@ -272,12 +270,37 @@ class KeyController extends Controller
                 'updated_at' => $key->updated_at->format('Y-m-d H:i:s'),
                 'last_used' => $key->last_used?->format('Y-m-d H:i:s'),
                 'revoked_at' => $key->revoked_at?->format('Y-m-d H:i:s'),
-                'revoked_reason' => $key->revoked_reason,
+                'revoked_reason' => $key->revocation_reason,
                 'certificate_data' => $key->certificate_data,
                 'certificate_issuer' => $key->certificate_issuer,
                 'fingerprint' => $this->generateFingerprint($key->public_key),
                 'signatures_count' => $key->signatures()->count(),
-            ]
+            ],
+        ]);
+    }
+
+    /**
+     * Affiche le formulaire d'édition d'une clé
+     */
+    public function edit($id)
+    {
+        $key = KeyPair::where('user_id', Auth::id())
+            ->where('id', $id)
+            ->firstOrFail();
+
+        return Inertia::render('keys/Edit', [
+            'keyData' => [
+                'id' => $key->id,
+                'key_name' => $key->key_name,
+                'algorithm_used' => $key->algorithm_used,
+                'key_size' => $key->key_size,
+                'is_default' => $key->is_default,
+                'is_active' => $key->is_active,
+                'is_revoked' => $key->is_revoked ?? false,
+                'valid_to' => $key->valid_to?->format('Y-m-d'),
+                'certificate_issuer' => $key->certificate_issuer,
+                'certificate_data' => $key->certificate_data,
+            ],
         ]);
     }
 
@@ -300,14 +323,14 @@ class KeyController extends Controller
         ]);
 
         // Si cette clé devient la clé par défaut
-        if (isset($validated['is_default']) && $validated['is_default'] && !$key->is_default) {
+        if (isset($validated['is_default']) && $validated['is_default'] && ! $key->is_default) {
             KeyPair::where('user_id', Auth::id())
                 ->where('is_default', true)
                 ->update(['is_default' => false]);
         }
 
         // Si on désactive la clé par défaut
-        if (isset($validated['is_default']) && !$validated['is_default'] && $key->is_default) {
+        if (isset($validated['is_default']) && ! $validated['is_default'] && $key->is_default) {
             // Vérifier s'il existe une autre clé pour devenir défaut
             $otherKey = KeyPair::where('user_id', Auth::id())
                 ->where('id', '!=', $id)
@@ -365,10 +388,10 @@ class KeyController extends Controller
             ->where('id', $id)
             ->firstOrFail();
 
-        $filename = Str::slug($key->key_name) . '.pub';
+        $filename = Str::slug($key->key_name).'.pub';
         $headers = [
             'Content-Type' => 'application/x-pem-file',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ];
 
         return response($key->public_key, 200, $headers);
@@ -388,10 +411,10 @@ class KeyController extends Controller
             'password' => 'required|current_password',
         ]);
 
-        $filename = Str::slug($key->key_name) . '.key';
+        $filename = Str::slug($key->key_name).'.key';
         $headers = [
             'Content-Type' => 'application/x-pem-file',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ];
 
         return response($key->private_key, 200, $headers);
@@ -421,7 +444,7 @@ class KeyController extends Controller
             'is_active' => false,
             'is_default' => false,
             'revoked_at' => Carbon::now(),
-            'revoked_reason' => $validated['reason'] ?? null,
+            'revocation_reason' => $validated['reason'] ?? null,
         ]);
 
         return redirect()->route('keys.show', $id)
@@ -482,7 +505,7 @@ class KeyController extends Controller
             ->where('id', $id)
             ->firstOrFail();
 
-        if ($key->is_revoked || !$key->is_active) {
+        if ($key->is_revoked || ! $key->is_active) {
             return redirect()->back()
                 ->with('error', 'Cannot set revoked or inactive key as default.');
         }
@@ -510,7 +533,7 @@ class KeyController extends Controller
 
         return response($key->public_key)
             ->header('Content-Type', 'application/x-pem-file')
-            ->header('Content-Disposition', 'attachment; filename="' . Str::slug($key->key_name) . '.pem"');
+            ->header('Content-Disposition', 'attachment; filename="'.Str::slug($key->key_name).'.pem"');
     }
 
     /**
@@ -525,9 +548,10 @@ class KeyController extends Controller
         // Convertir PEM en SSH (si RSA)
         if ($key->algorithm_used === 'rsa') {
             $sshKey = $this->pemToSsh($key->public_key, $key->key_name);
+
             return response($sshKey)
                 ->header('Content-Type', 'text/plain')
-                ->header('Content-Disposition', 'attachment; filename="' . Str::slug($key->key_name) . '.pub"');
+                ->header('Content-Disposition', 'attachment; filename="'.Str::slug($key->key_name).'.pub"');
         }
 
         return redirect()->back()->with('error', 'SSH export only available for RSA keys.');
@@ -542,14 +566,13 @@ class KeyController extends Controller
         $details = openssl_pkey_get_details($key);
 
         if ($details['type'] === OPENSSL_KEYTYPE_RSA) {
-            $buffer = pack('N', 7) . 'ssh-rsa' .
-                pack('N', strlen($details['rsa']['e'])) . $details['rsa']['e'] .
-                pack('N', strlen($details['rsa']['n'])) . $details['rsa']['n'];
+            $buffer = pack('N', 7).'ssh-rsa'.
+                pack('N', strlen($details['rsa']['e'])).$details['rsa']['e'].
+                pack('N', strlen($details['rsa']['n'])).$details['rsa']['n'];
 
-            return 'ssh-rsa ' . base64_encode($buffer) . ' ' . $comment;
+            return 'ssh-rsa '.base64_encode($buffer).' '.$comment;
         }
 
         throw new \Exception('Unsupported key type for SSH export');
     }
-
 }

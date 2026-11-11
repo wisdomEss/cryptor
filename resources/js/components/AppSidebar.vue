@@ -2,24 +2,19 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { usePage } from '@inertiajs/vue3';
-import { route as ziggyRoute } from 'ziggy-js';
-import type { Config } from 'ziggy-js';
 import {
     BookOpen,
-    Folder,
     LayoutGrid,
     KeyRound,
     Upload,
-    Ban,
     PenTool,
-    Clock,
-    FileCheck,
     ShieldCheck,
     History,
-    Globe,
     Signature,
     MessageCircle,
 } from 'lucide-vue-next';
+import { route as ziggyRoute } from 'ziggy-js';
+import type { Config } from 'ziggy-js';
 
 import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -91,7 +86,6 @@ const mainNavItems: NavItem[] = [
                 href: route('signatures.create'),
                 icon: Signature,
             },
-           
         ],
     },
 
@@ -111,7 +105,6 @@ const mainNavItems: NavItem[] = [
                 href: route('verifications.create'),
                 icon: ShieldCheck,
             },
-            
         ],
     },
 ];

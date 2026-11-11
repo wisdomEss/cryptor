@@ -1,20 +1,20 @@
 <?php
 
 namespace App\Http\Controllers\Signatures;
+
 use App\Http\Controllers\Controller;
 use App\Models\FileSigned;
 use App\Models\KeyPair;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
 
 class SignatureController extends Controller
 {
-
     public function show(Request $request, $id)
     {
         $signature = Signature::with([
@@ -24,7 +24,7 @@ class SignatureController extends Controller
             'verifications' => function ($query) {
                 $query->latest('verified_at')->limit(10);
             },
-            'verifications.verifier'
+            'verifications.verifier',
         ])
             ->where('id', $id)
             ->where('signer_id', auth()->id()) // Sécurité : seule la signature de l'utilisateur
@@ -97,132 +97,177 @@ class SignatureController extends Controller
         ]);
     }
 
+    // Dans SignatureController.php
 
-// Dans SignatureController.php
-
-/**
- * Update the specified signature (validate).
- */
-public function update(Request $request, $id)
-{
-    $signature = Signature::where('id', $id)
-        ->where('signer_id', auth()->id())
-        ->firstOrFail();
-
-    $request->validate([
-        'validation_notes' => 'nullable|string|max:500',
-    ]);
-
-    try {
-        DB::beginTransaction();
-
-        $signature->update([
-            'validation_status' => 'valid',
-            'is_valid' => true,
-            'validated_at' => now(),
-            'validation_message' => $request->validation_notes ?? 'Signature validated successfully',
-        ]);
-
-        // Créer une vérification automatique
-        $verification = SignatureVerification::create([
-            'signature_id' => $signature->id,
-            'verifier_id' => auth()->id(),
-            'verified_hash' => $signature->file->file_hash,
-            'expected_hash' => $signature->file->file_hash,
-            'result' => true,
-            'verification_type' => 'manual',
-            'verification_details' => json_encode([
-                'action' => 'validation',
-                'notes' => $request->validation_notes,
-                'validated_by' => auth()->user()->name,
-                'validated_at' => now()->toIso8601String(),
-            ]),
-            'signature_timestamp' => $signature->signed_at,
-            'document_timestamp' => $signature->file->created_at,
-            'verifier_ip' => $request->ip(),
-            'verifier_user_agent' => $request->userAgent(),
-            'verification_duration_ms' => 0,
-            'is_public_verification' => false,
-            'verified_at' => now(),
-        ]);
-
-        $verification->generateVerificationToken();
-
-        DB::commit();
-
-        return redirect()->back()->with('success', 'Signature validated successfully.');
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return back()->withErrors(['error' => 'Failed to validate signature: ' . $e->getMessage()]);
-    }
-}
-
-/**
- * Revoke the specified signature.
- */
-public function revoke(Request $request, $id)
-{
-    $signature = Signature::where('id', $id)
-        ->where('signer_id', auth()->id())
-        ->firstOrFail();
-
-    $request->validate([
-        'revocation_reason' => 'required|string|max:500',
-    ]);
-
-    try {
-        DB::beginTransaction();
-
-        $signature->update([
-            'validation_status' => 'revoked',
-            'is_valid' => false,
-            'revoked_at' => now(),
-            'revocation_reason' => $request->revocation_reason,
-            'validation_message' => 'Signature revoked: ' . $request->revocation_reason,
-        ]);
-
-        // Créer une vérification pour la révocation
-        $verification = SignatureVerification::create([
-            'signature_id' => $signature->id,
-            'verifier_id' => auth()->id(),
-            'verified_hash' => $signature->file->file_hash,
-            'expected_hash' => $signature->file->file_hash,
-            'result' => false,
-            'verification_type' => 'manual',
-            'verification_details' => json_encode([
-                'action' => 'revocation',
-                'reason' => $request->revocation_reason,
-                'revoked_by' => auth()->user()->name,
-                'revoked_at' => now()->toIso8601String(),
-            ]),
-            'error_message' => 'Signature revoked: ' . $request->revocation_reason,
-            'signature_timestamp' => $signature->signed_at,
-            'document_timestamp' => $signature->file->created_at,
-            'verifier_ip' => $request->ip(),
-            'verifier_user_agent' => $request->userAgent(),
-            'verification_duration_ms' => 0,
-            'is_public_verification' => false,
-            'verified_at' => now(),
-        ]);
-
-        $verification->generateVerificationToken();
-
-        DB::commit();
-
-        return redirect()->back()->with('success', 'Signature revoked successfully.');
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return back()->withErrors(['error' => 'Failed to revoke signature: ' . $e->getMessage()]);
-    }
-}
-
-    public function destroy(Request $request)
+    /**
+     * Update the specified signature (validate).
+     */
+    public function update(Request $request, $id)
     {
-    }
-    
+        $signature = Signature::where('id', $id)
+            ->where('signer_id', auth()->id())
+            ->firstOrFail();
 
+        $request->validate([
+            'validation_notes' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $signature->update([
+                'validation_status' => 'valid',
+                'is_valid' => true,
+                'validated_at' => now(),
+                'validation_message' => $request->validation_notes ?? 'Signature validated successfully',
+            ]);
+
+            // Créer une vérification automatique
+            $verification = SignatureVerification::create([
+                'signature_id' => $signature->id,
+                'verifier_id' => auth()->id(),
+                'verified_hash' => $signature->file->file_hash,
+                'expected_hash' => $signature->file->file_hash,
+                'result' => true,
+                'verification_type' => 'manual',
+                'verification_details' => [
+                    'action' => 'validation',
+                    'notes' => $request->validation_notes,
+                    'validated_by' => auth()->user()->name,
+                    'validated_at' => now()->toIso8601String(),
+                ],
+                'signature_timestamp' => $signature->signed_at,
+                'document_timestamp' => $signature->file->created_at,
+                'verifier_ip' => $request->ip(),
+                'verifier_user_agent' => $request->userAgent(),
+                'verification_duration_ms' => 0,
+                'is_public_verification' => false,
+                'verified_at' => now(),
+            ]);
+
+            $verification->generateVerificationToken();
+
+            DB::commit();
+
+            return redirect()->back()->with('success', 'Signature validated successfully.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return back()->withErrors(['error' => 'Failed to validate signature: '.$e->getMessage()]);
+        }
+    }
+
+    /**
+     * Revoke the specified signature.
+     */
+    public function revoke(Request $request, $id)
+    {
+        $signature = Signature::where('id', $id)
+            ->where('signer_id', auth()->id())
+            ->firstOrFail();
+
+        $request->validate([
+            'revocation_reason' => 'required|string|max:500',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $signature->update([
+                'validation_status' => 'revoked',
+                'is_valid' => false,
+                'revoked_at' => now(),
+                'revocation_reason' => $request->revocation_reason,
+                'validation_message' => 'Signature revoked: '.$request->revocation_reason,
+            ]);
+
+            // Créer une vérification pour la révocation
+            $verification = SignatureVerification::create([
+                'signature_id' => $signature->id,
+                'verifier_id' => auth()->id(),
+                'verified_hash' => $signature->file->file_hash,
+                'expected_hash' => $signature->file->file_hash,
+                'result' => false,
+                'verification_type' => 'manual',
+                'verification_details' => [
+                    'action' => 'revocation',
+                    'reason' => $request->revocation_reason,
+                    'revoked_by' => auth()->user()->name,
+                    'revoked_at' => now()->toIso8601String(),
+                ],
+                'error_message' => 'Signature revoked: '.$request->revocation_reason,
+                'signature_timestamp' => $signature->signed_at,
+                'document_timestamp' => $signature->file->created_at,
+                'verifier_ip' => $request->ip(),
+                'verifier_user_agent' => $request->userAgent(),
+                'verification_duration_ms' => 0,
+                'is_public_verification' => false,
+                'verified_at' => now(),
+            ]);
+
+            $verification->generateVerificationToken();
+
+            DB::commit();
+
+            return redirect()->back()->with('success', 'Signature revoked successfully.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return back()->withErrors(['error' => 'Failed to revoke signature: '.$e->getMessage()]);
+        }
+    }
+
+    /**
+     * Affiche le formulaire de modification (non utilisé : la validation se
+     * fait directement depuis la page Show).
+     */
+    public function edit($id)
+    {
+        return redirect()->route('signatures.show', $id);
+    }
+
+    /**
+     * Supprime une signature et, si c'est la dernière sur le document,
+     * le document associé.
+     */
+    public function destroy($id)
+    {
+        $signature = Signature::where('id', $id)
+            ->where('signer_id', auth()->id())
+            ->firstOrFail();
+
+        try {
+            DB::beginTransaction();
+
+            $file = $signature->file;
+
+            $signature->verifications()->delete();
+            $signature->delete();
+
+            if ($file && $file->signatures()->count() === 0) {
+                $path = $file->getRawOriginal('file_path');
+                if ($path && Storage::disk('local')->exists($path)) {
+                    Storage::disk('local')->delete($path);
+                }
+                $file->delete();
+            } elseif ($file) {
+                $file->decrement('signatures_count');
+            }
+
+            DB::commit();
+
+            return redirect()->route('signatures.index')
+                ->with('success', 'Signature deleted successfully.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return back()->withErrors([
+                'error' => 'Failed to delete signature: '.$e->getMessage(),
+            ]);
+        }
+    }
 
     public function index(Request $request)
     {
@@ -234,7 +279,7 @@ public function revoke(Request $request, $id)
             ->map(function ($signature) {
                 return [
                     'id' => $signature->id,
-                    'signature_value' => substr($signature->signature_value, 0, 20) . '...',
+                    'signature_value' => substr($signature->signature_value, 0, 20).'...',
                     'signature_format' => $signature->signature_format,
                     'algorithm_used' => $signature->algorithm_used,
                     'signing_reason' => $signature->signing_reason,
@@ -267,31 +312,34 @@ public function revoke(Request $request, $id)
             });
 
         return Inertia::render('signatures/Index', [
-            'signatures' => $signatures
-        ]);
-    }
-
-
-  
-  
-    public function pending(Request $request)
-{
-    try {
-        $signatures = Signature::with(['file', 'keyPair', 'signer'])
-            ->where('signer_id', auth()->id())
-            ->where('validation_status', 'pending') // Au lieu de pendingValidation()
-            ->latest('signed_at')
-            ->get()
-            ->map(fn($signature) => $this->formatSignature($signature));
-
-        return Inertia::render('signatures/Index', [
             'signatures' => $signatures,
-            'type' => 'pending'
         ]);
-    } catch (\Exception $e) {
-        dd($e->getMessage()); // Affiche l'erreur
     }
-}
+
+    public function pending(Request $request)
+    {
+        try {
+            $signatures = Signature::with(['file', 'keyPair', 'signer'])
+                ->where('signer_id', auth()->id())
+                ->where('validation_status', 'pending') // Au lieu de pendingValidation()
+                ->latest('signed_at')
+                ->get()
+                ->map(fn ($signature) => $this->formatSignature($signature));
+
+            return Inertia::render('signatures/Index', [
+                'signatures' => $signatures,
+                'type' => 'pending',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to load pending signatures: '.$e->getMessage());
+
+            return Inertia::render('signatures/Index', [
+                'signatures' => [],
+                'type' => 'pending',
+                'error' => 'Failed to load pending signatures.',
+            ]);
+        }
+    }
 
     public function revoked(Request $request)
     {
@@ -300,11 +348,11 @@ public function revoke(Request $request, $id)
             ->whereNotNull('revoked_at')
             ->latest('revoked_at')
             ->get()
-            ->map(fn($signature) => $this->formatSignature($signature));
+            ->map(fn ($signature) => $this->formatSignature($signature));
 
         return Inertia::render('signatures/Index', [
             'signatures' => $signatures,
-            'type' => 'revoked'
+            'type' => 'revoked',
         ]);
     }
 
@@ -312,14 +360,14 @@ public function revoke(Request $request, $id)
     {
         $signatures = Signature::with(['file', 'keyPair', 'signer'])
             ->where('signer_id', auth()->id())
-            ->whereHas('file', fn($q) => $q->where('expires_at', '<', now()))
+            ->whereHas('file', fn ($q) => $q->where('expires_at', '<', now()))
             ->latest('signed_at')
             ->get()
-            ->map(fn($signature) => $this->formatSignature($signature));
+            ->map(fn ($signature) => $this->formatSignature($signature));
 
         return Inertia::render('signatures/Index', [
             'signatures' => $signatures,
-            'type' => 'expired'
+            'type' => 'expired',
         ]);
     }
 
@@ -327,7 +375,7 @@ public function revoke(Request $request, $id)
     {
         return [
             'id' => $signature->id,
-            'signature_value' => substr($signature->signature_value, 0, 20) . '...',
+            'signature_value' => substr($signature->signature_value, 0, 20).'...',
             'signature_format' => $signature->signature_format,
             'algorithm_used' => $signature->algorithm_used,
             'signing_reason' => $signature->signing_reason,
@@ -380,16 +428,15 @@ public function revoke(Request $request, $id)
             });
 
         return Inertia::render('signatures/Create', [
-            'keys' => $keys
+            'keys' => $keys,
         ]);
     }
-
 
     public function store(Request $request)
     {
         $request->validate([
             'file' => 'required|file|max:10240', // 10MB max
-            'key_pair_id' => 'required|exists:key_pairs,id,user_id,' . auth()->id(),
+            'key_pair_id' => 'required|exists:key_pairs,id,user_id,'.auth()->id(),
             'signing_reason' => 'nullable|string|max:500',
             'signing_location' => 'nullable|string|max:255',
             'contact_info' => 'nullable|string|max:255',
@@ -409,7 +456,7 @@ public function revoke(Request $request, $id)
                 ->firstOrFail();
 
             // Vérification approfondie de la validité de la clé
-            if (!$keyPair->isValid()) {
+            if (! $keyPair->isValid()) {
                 throw new \Exception('The selected key is not valid or has expired.');
             }
 
@@ -424,13 +471,13 @@ public function revoke(Request $request, $id)
             // Générer un nom de fichier unique et sécurisé
             $originalName = $file->getClientOriginalName();
             $extension = $file->getClientOriginalExtension();
-            $fileName = time() . '_' . uniqid() . '.' . $extension;
+            $fileName = time().'_'.uniqid().'.'.$extension;
 
             // Stocker dans un répertoire utilisateur spécifique
-            $userDir = 'signatures/' . auth()->id() . '/documents/' . date('Y/m/d');
+            $userDir = 'signatures/'.auth()->id().'/documents/'.date('Y/m/d');
             $filePath = $file->storeAs($userDir, $fileName, 'local');
 
-            if (!$filePath) {
+            if (! $filePath) {
                 throw new \Exception('Failed to upload file.');
             }
 
@@ -459,24 +506,23 @@ public function revoke(Request $request, $id)
                     ? now()->addDays((int) $request->expires_in_days)
                     : null,
                 'retention_period' => $request->expires_in_days,
-                'metadata' => json_encode([
+                'upload_ip' => $request->ip(),
+                'upload_user_agent' => $request->userAgent(),
+                'metadata' => [
                     'sha512' => $hashSha512,
                     'md5' => $hashMd5,
                     'uploaded_at' => now()->toIso8601String(),
                     'upload_ip' => $request->ip(),
                     'user_agent' => $request->userAgent(),
-                ]),
+                ],
             ]);
 
-            // Décrypter la clé privée
+            // La clé privée est déchiffrée automatiquement par le cast
+            // 'encrypted' du modèle KeyPair.
+            $privateKey = $keyPair->private_key;
 
-            try {
-                // apres je vais crypter la private cle dans la base de donnee donc la logique sera utiliser ici
-                $privateKey = $keyPair->private_key;
-
-            } catch (\Exception $e) {
-
-                throw new \Exception('Failed to decrypt private key: ' . $e->getMessage());
+            if (empty($privateKey)) {
+                throw new \Exception('Failed to decrypt private key.');
             }
 
             // Générer la signature selon le format choisi
@@ -487,6 +533,7 @@ public function revoke(Request $request, $id)
                 $request->signature_format,
                 $fileSigned,
                 $keyPair->certificate_data,
+                $keyPair->algorithm_used,
             );
             // Préparer les données de signature visuelle si demandé
             $visualData = null;
@@ -524,10 +571,8 @@ public function revoke(Request $request, $id)
             $fileSigned->addSignatureCount();
 
             // Mettre à jour la date de dernière utilisation de la clé
-            $keyPair->update([
-                'last_used' => now(),
-                'use_count' => DB::raw('use_count + 1'),
-            ]);
+            $keyPair->update(['last_used' => now()]);
+            $keyPair->increment('use_count');
 
             // Créer une entrée de vérification initiale
             $this->createInitialVerification($signature, $request);
@@ -537,10 +582,11 @@ public function revoke(Request $request, $id)
             return redirect()->route('signatures.show', $signature->id)
                 ->with('success', 'Document signed successfully.');
 
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             DB::rollBack();
+
             return back()->withErrors([
-                'key_pair_id' => 'The selected key was not found or does not belong to you.'
+                'key_pair_id' => 'The selected key was not found or does not belong to you.',
             ]);
 
         } catch (\Exception $e) {
@@ -552,14 +598,14 @@ public function revoke(Request $request, $id)
             }
 
             // Log l'erreur
-            \Log::error('Signature failed: ' . $e->getMessage(), [
+            \Log::error('Signature failed: '.$e->getMessage(), [
                 'user_id' => auth()->id(),
                 'file' => $originalName ?? null,
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return back()->withErrors([
-                'error' => 'Failed to sign document: ' . $e->getMessage()
+                'error' => 'Failed to sign document: '.$e->getMessage(),
             ]);
         }
     }
@@ -567,50 +613,46 @@ public function revoke(Request $request, $id)
     /**
      * Génère une signature numérique selon le format choisi
      */
-    private function generateSignature($filePath, $privateKey, $publicKey, $format, $fileSigned, $certificateData, )
+    private function generateSignature($filePath, $privateKey, $publicKey, $format, $fileSigned, $certificateData, $algorithmUsed = 'rsa')
     {
-
         try {
             $fileContent = file_get_contents($filePath);
 
             switch ($format) {
-                // case 'pkcs7':
-                //     return $this->generatePkcs7Signature($filePath, $privateKey, $publicKey, $fileSigned, $certificateData);
-
                 case 'pdf':
-                    return $this->generatePadesSignature($filePath, $privateKey, $publicKey, $fileSigned);
+                    return $this->generatePadesSignature($filePath, $privateKey, $publicKey, $fileSigned, $algorithmUsed);
 
                 case 'cms':
-                    return $this->generateCmsSignature($fileContent, $privateKey, $publicKey, $fileSigned);
+                    return $this->generateCmsSignature($fileContent, $privateKey, $publicKey, $fileSigned, $algorithmUsed);
 
                 default:
                     throw new \Exception("Unsupported signature format: {$format}");
             }
         } catch (\Exception $e) {
-            throw new \Exception("Signature generation failed: " . $e->getMessage());
+            throw new \Exception('Signature generation failed: '.$e->getMessage());
         }
     }
 
+    /**
+     * Retourne l'identifiant OID/texte de l'algorithme de signature pour les
+     * métadonnées (CMS/PAdES), en fonction du type de clé utilisé.
+     */
+    private function signatureAlgorithmLabel(string $algorithmUsed): string
+    {
+        return match ($algorithmUsed) {
+            'ecdsa' => 'ecdsa-with-SHA256',
+            default => 'rsaEncryption',
+        };
+    }
 
     /**
      * Génère une signature CMS (Cryptographic Message Syntax)
      */
-    private function generateCmsSignature($fileContent, $privateKey, $publicKey, $fileSigned)
+    private function generateCmsSignature($fileContent, $privateKey, $publicKey, $fileSigned, $algorithmUsed = 'rsa')
     {
-
-
-        // ##############################################""
-
-
-        // // Calculer le hash du contenu
-        // $hash = hash('sha256', $fileContent, true);
-        // // Signer le hash
-        // openssl_sign($hash, $signature, $privateKey, OPENSSL_ALGO_SHA256);
         openssl_sign($fileContent, $signature, $privateKey, OPENSSL_ALGO_SHA256);
 
         $hash = hash('sha256', $fileContent, true); // juste pour metadata
-
-        // ############################################################################
 
         // Construire la structure CMS
         $cmsData = [
@@ -624,7 +666,7 @@ public function revoke(Request $request, $id)
                 'signingTime' => time(),
                 'messageDigest' => base64_encode($hash),
             ],
-            'signatureAlgorithm' => 'rsaEncryption',
+            'signatureAlgorithm' => $this->signatureAlgorithmLabel($algorithmUsed),
             'file_id' => $fileSigned->id,
             'timestamp' => now()->toIso8601String(),
         ];
@@ -635,27 +677,14 @@ public function revoke(Request $request, $id)
     /**
      * Génère une signature PAdES (PDF)
      */
-    private function generatePadesSignature($filePath, $privateKey, $publicKey, $fileSigned)
+    private function generatePadesSignature($filePath, $privateKey, $publicKey, $fileSigned, $algorithmUsed = 'rsa')
     {
         // Note: Cette implémentation est simplifiée
         // Pour une vraie signature PAdES, utilisez une bibliothèque comme TCPDF, FPDI, ou setasign/FPDI
 
         $pdfContent = file_get_contents($filePath);
 
-        // #########################################
-
-        // // Calculer le hash du PDF
-        // $pdfHash = hash('sha256', $pdfContent, true);
-        // // Signer le hash
-        // openssl_sign($pdfHash, $signature, $privateKey, OPENSSL_ALGO_SHA256);
-
         openssl_sign($pdfContent, $signature, $privateKey, OPENSSL_ALGO_SHA256);
-        $pdfHash = hash('sha256', $pdfContent, true);
-
-        // #####################################"
-
-
-
 
         // Préparer les données de signature PAdES
         $padesData = [
@@ -663,6 +692,7 @@ public function revoke(Request $request, $id)
             'digestAlgorithm' => 'sha256',
             'signature' => base64_encode($signature),
             'certificate' => base64_encode($publicKey),
+            'signatureAlgorithm' => $this->signatureAlgorithmLabel($algorithmUsed),
             'signingTime' => time(),
             'byteRange' => [0, strlen($pdfContent), strlen($pdfContent) + 1000, 0], // Exemple
             'subFilter' => 'ETSI.CAdES.detached',
@@ -682,6 +712,7 @@ public function revoke(Request $request, $id)
         // Calculer le hash SHA-256 et prendre les 16 premiers caractères
         return substr(hash('sha256', $key), 0, 16);
     }
+
     /**
      * Génère un token d'horodatage
      */
@@ -701,12 +732,21 @@ public function revoke(Request $request, $id)
      */
     private function storeDetachedSignature($signature, $signatureValue, $fileSigned)
     {
-        $signatureDir = 'signatures/' . auth()->id() . '/signatures/' . date('Y/m/d');
-        $signatureFileName = pathinfo($fileSigned->original_file_name, PATHINFO_FILENAME) . '.p7s';
-        $signaturePath = $signatureDir . '/' . $signatureFileName;
+        $signatureDir = 'signatures/'.auth()->id().'/signatures/'.date('Y/m/d');
+        $signatureFileName = pathinfo($fileSigned->original_file_name, PATHINFO_FILENAME).'.p7s';
+        $signaturePath = $signatureDir.'/'.$signatureFileName;
 
-        // Décoder et stocker la signature
-        $binarySignature = base64_decode($signatureValue);
+        // $signatureValue est la structure CMS/PAdES encodée en JSON : il faut
+        // en extraire le champ 'signature' (base64) avant de le décoder,
+        // sinon le fichier produit n'est pas une signature binaire valide.
+        $decoded = json_decode($signatureValue, true);
+        $rawSignature = $decoded['signature'] ?? null;
+
+        if (! $rawSignature) {
+            return null;
+        }
+
+        $binarySignature = base64_decode($rawSignature);
         Storage::disk('local')->put($signaturePath, $binarySignature);
 
         // Mettre à jour la signature avec le chemin
@@ -767,12 +807,12 @@ public function revoke(Request $request, $id)
             'expected_hash' => $signature->file->original_hash,
             'result' => true,
             'verification_type' => 'signature',
-            'verification_details' => json_encode([
+            'verification_details' => [
                 'algorithm' => $signature->algorithm_used,
                 'format' => $signature->signature_format,
                 'signature_valid' => true,
                 'document_integrity' => true,
-            ]),
+            ],
             'signature_timestamp' => now(),
             'document_timestamp' => now(),
             'verifier_ip' => $request->ip(),
@@ -786,6 +826,4 @@ public function revoke(Request $request, $id)
 
         return $verification;
     }
-
-
 }

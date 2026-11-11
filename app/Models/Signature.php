@@ -16,6 +16,7 @@ class Signature extends Model
         'key_pair_id',
         'signer_id',
         'signature_value',
+        'signature_file_path',
         'signature_format',
         'algorithm_used',
         'signing_reason',
@@ -28,14 +29,17 @@ class Signature extends Model
         'nonce_value',
         'timestamp_token',
         'signing_ip',
-        'signing_device_info'
+        'signing_device_info',
+        'validated_at',
+        'revoked_at',
+        'revocation_reason',
     ];
 
     protected $casts = [
         'is_valid' => 'boolean',
         'signed_at' => 'datetime',
         'validated_at' => 'datetime',
-        'revoked_at' => 'datetime'
+        'revoked_at' => 'datetime',
     ];
 
     protected $appends = ['verification_count'];
@@ -102,13 +106,13 @@ class Signature extends Model
         return $this->is_valid;
     }
 
-    public function markAsValid(string $message = null): void
+    public function markAsValid(?string $message = null): void
     {
         $this->update([
             'is_valid' => true,
             'validation_status' => 'valid',
             'validation_message' => $message,
-            'validated_at' => now()
+            'validated_at' => now(),
         ]);
     }
 
@@ -118,7 +122,7 @@ class Signature extends Model
             'is_valid' => false,
             'validation_status' => 'invalid',
             'validation_message' => $message,
-            'validated_at' => now()
+            'validated_at' => now(),
         ]);
     }
 }

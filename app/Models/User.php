@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -11,7 +10,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
 
 class User extends Authenticatable
 {
-    use HasFactory, SoftDeletes , Notifiable, TwoFactorAuthenticatable;
+    use HasFactory, Notifiable , SoftDeletes, TwoFactorAuthenticatable;
 
     protected $table = 'users';
 
@@ -29,7 +28,7 @@ class User extends Authenticatable
         'language',
         'preferences',
         'last_login',
-        'failed_login_attempts'
+        'failed_login_attempts',
     ];
 
     protected $hidden = [
@@ -40,6 +39,7 @@ class User extends Authenticatable
     ];
 
     protected $casts = [
+        'password' => 'hashed',
         'is_active' => 'boolean',
         'is_email_verified' => 'boolean',
         'two_factor_enabled' => 'boolean',
@@ -78,8 +78,6 @@ class User extends Authenticatable
     {
         return $this->hasMany(SignatureVerification::class, 'verifier_id');
     }
-
-
 
     // Scopes
     public function scopeActive($query)

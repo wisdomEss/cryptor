@@ -5,10 +5,10 @@ namespace App\Actions\Fortify;
 use App\Concerns\PasswordValidationRules;
 use App\Concerns\ProfileValidationRules;
 use App\Models\User;
-use Illuminate\Support\Facades\Validator;
-use Laravel\Fortify\Contracts\CreatesNewUsers;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Laravel\Fortify\Contracts\CreatesNewUsers;
 
 class CreateNewUser implements CreatesNewUsers
 {
@@ -32,20 +32,20 @@ class CreateNewUser implements CreatesNewUsers
     //         'password' => $input['password'],
     //     ]);
     // }
-public function create(array $input): User
-{
-    Validator::make($input, [
-        ...$this->profileRules(),
-        'password' => $this->passwordRules(),
-    ])->validate();
+    public function create(array $input): User
+    {
+        Validator::make($input, [
+            ...$this->profileRules(),
+            'password' => $this->passwordRules(),
+        ])->validate();
 
-    return User::create([
-        'name' => $input['name'],
-        'email' => $input['email'],
-        'username' => $this->generateUniqueUsername($input['name']),
-        'password' => Hash::make($input['password']), 
-    ]);
-}
+        return User::create([
+            'name' => $input['name'],
+            'email' => $input['email'],
+            'username' => $this->generateUniqueUsername($input['name']),
+            'password' => Hash::make($input['password']),
+        ]);
+    }
 
     protected function generateUniqueUsername(string $name): string
     {
@@ -54,11 +54,10 @@ public function create(array $input): User
         $counter = 1;
 
         while (User::where('username', $username)->exists()) {
-            $username = $baseUsername . '-' . $counter;
+            $username = $baseUsername.'-'.$counter;
             $counter++;
         }
 
         return $username;
     }
-
 }
