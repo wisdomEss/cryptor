@@ -340,12 +340,9 @@ const features = [
             <div class="mt-8 space-y-4 text-gray-600 dark:text-gray-300">
                 <div class="flex items-center gap-3">
                     <Mail class="h-5 w-5" />
-                    contact@cryptor.local
+                    ewisdommoukpe@gmail.com
                 </div>
-                <div class="flex items-center gap-3">
-                    <Phone class="h-5 w-5" />
-                    +212 6 00 00 00 00
-                </div>
+                
                 <div class="flex items-center gap-3">
                     <MapPin class="h-5 w-5" />
                     Maroc
