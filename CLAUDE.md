@@ -161,3 +161,12 @@ Quiconque reçoit un document doit pouvoir le vérifier **sans se connecter** : 
 - Un document inconnu ou modifié est un **résultat normal** : HTTP 422, message clair (`unknown_document`), rien dans les logs d'erreur. Seules les erreurs inattendues renvoient 500.
 - Rejouer un token ne modifie jamais l'enregistrement d'origine (IP et navigateur du vérificateur initial) : le journal d'audit reste intact.
 - Le « QR code » de `verifications/Show.vue` n'était qu'une icône : supprimé. Si un vrai QR code est voulu, ajouter une bibliothèque (`qrcode`) et y encoder le lien de partage public.
+
+### HTTPS derrière un proxy (2026-11-12)
+
+Symptôme en production : page blanche, console pleine de « Mixed Content » et de violations CSP sur des URLs `http://…`. Cause : le TLS est terminé en amont (Cloudflare/proxy), Laravel reçoit du HTTP simple et génère des URLs `http://` (assets Vite, `@routes` Ziggy, `route()`), que le navigateur bloque sur une page https (et que `'self'` de la CSP exclut).
+- `config('cryptor.force_https')` (`CRYPTOR_FORCE_HTTPS`, **défaut : vrai si `APP_URL` commence par `https://`**) → `URL::forceScheme('https')` dans `AppServiceProvider`, HSTS même si `isSecure()` est faux, et `upgrade-insecure-requests` dans la CSP. **Le seul réglage à faire sur un serveur : `APP_URL=https://…` puis `config:cache`.**
+- `TRUSTED_PROXIES` (défaut `192.168.40.10`, liste séparée par des virgules ou `*`) remplace l'IP codée en dur de `bootstrap/app.php`.
+- Sources CSP supplémentaires **filtrées** (`https://hôte` uniquement, pas de `*`, `data:`, `'unsafe-*'`) : `CRYPTOR_CSP_SCRIPT_SRC`, `CRYPTOR_CSP_CONNECT_SRC`. `static.cloudflareinsights.com` (analytique Cloudflare) est bloqué par la CSP tant qu'on ne l'autorise pas ou qu'on ne la désactive pas côté Cloudflare.
+- Fichier statique `resources/js/ziggy.js` **supprimé** (il figeait `http://localhost:8000`) ; `app.ts` fait `.use(ZiggyVue)` sans configuration et lit celle de `@routes`.
+- Dans les tests, `BladeRouteGenerator::$generated` (statique Ziggy) doit être remis à `false` pour que `@routes` régénère sa configuration complète.

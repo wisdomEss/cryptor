@@ -138,10 +138,17 @@ Dans le `.env` **du serveur** (jamais dans le dépôt) :
 |---|---|---|
 | `APP_ENV` | `production` | active la CSP stricte et les mots de passe renforcés |
 | `APP_DEBUG` | `false` | sinon les erreurs affichent chemins, requêtes et variables |
-| `APP_URL` | `https://votre-domaine` | liens et cookies |
+| `APP_URL` | `https://votre-domaine` | **doit commencer par `https://`** : l'application force alors ses URLs en https. Sinon, derrière un proxy TLS, le navigateur bloque les ressources `http://` (contenu mixte, CSP) et la page reste blanche |
 | `SESSION_SECURE_COOKIE` | `true` | cookie de session envoyé uniquement en HTTPS |
 | `DB_CONNECTION` | `mysql` (+ `DB_*`) | testé en CI sur MySQL 8 |
 | `MAIL_*` | un vrai SMTP | **indispensable** : sans lui, aucun nouveau compte ne peut confirmer son adresse |
+
+Après toute modification du `.env` du serveur : `sudo -u www-data php artisan config:cache`.
+
+**Derrière un proxy (Cloudflare, nginx…)** : `APP_URL=https://…` suffit pour les URLs. `TRUSTED_PROXIES` (adresses
+séparées par des virgules, ou `*` si le serveur n'est joignable qu'à travers le proxy) permet à Laravel de lire l'IP
+réelle du client (`X-Forwarded-For`). Si le proxy injecte des scripts (analytique Cloudflare…), soit vous les
+désactivez côté proxy, soit vous les autorisez : `CRYPTOR_CSP_SCRIPT_SRC` et `CRYPTOR_CSP_CONNECT_SRC`.
 
 Sauvegardez `.env` **et** `storage/app/private/` (documents, signatures, autorité de certification), et lancez
 artisan avec l'utilisateur du serveur web (`sudo -u www-data php artisan ...`), jamais en root.

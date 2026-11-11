@@ -30,9 +30,11 @@ return Application::configure(basePath: dirname(__DIR__))
             AddLinkHeadersForPreloadedAssets::class,
         ]);
 
-        $middleware->trustProxies(at: [
-            '192.168.40.10',
-        ]);
+        // Proxies dont on accepte les en-têtes X-Forwarded-* (IP réelle du client, schéma HTTPS).
+        // TRUSTED_PROXIES : adresses séparées par des virgules, ou `*` (à n'utiliser que si le serveur
+        // n'est joignable qu'à travers le proxy).
+        $trusted = trim((string) env('TRUSTED_PROXIES', '192.168.40.10'));
+        $middleware->trustProxies(at: $trusted === '*' ? '*' : array_values(array_filter(array_map('trim', explode(',', $trusted)))));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

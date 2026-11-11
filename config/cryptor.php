@@ -71,4 +71,39 @@ return [
     */
     'require_verified_email' => (bool) env('CRYPTOR_REQUIRE_VERIFIED_EMAIL', true),
 
+    /*
+    |--------------------------------------------------------------------------
+    | HTTPS derrière un proxy (Cloudflare, nginx, répartiteur de charge)
+    |--------------------------------------------------------------------------
+    |
+    | Quand le TLS est terminé en amont, Laravel reçoit la requête en HTTP simple et génère
+    | des URLs `http://` (feuilles de style, scripts, formulaires) : le navigateur les bloque
+    | (contenu mixte, CSP). `force_https` impose `https://` à toutes les URLs générées, envoie
+    | HSTS et ajoute `upgrade-insecure-requests` à la CSP.
+    |
+    | Par défaut il est actif si APP_URL commence par https:// : c'est la seule chose à régler
+    | (APP_URL=https://votre-domaine). CRYPTOR_FORCE_HTTPS permet de le forcer à la main.
+    |
+    */
+    'force_https' => filter_var(
+        env('CRYPTOR_FORCE_HTTPS', str_starts_with((string) env('APP_URL'), 'https://')),
+        FILTER_VALIDATE_BOOLEAN
+    ),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Sources supplémentaires de la Content-Security-Policy (production)
+    |--------------------------------------------------------------------------
+    |
+    | Listes séparées par des espaces, vides par défaut. Exemple pour l'analytique Cloudflare
+    | injectée automatiquement par le proxy :
+    |   CRYPTOR_CSP_SCRIPT_SRC="https://static.cloudflareinsights.com"
+    |   CRYPTOR_CSP_CONNECT_SRC="https://cloudflareinsights.com"
+    |
+    */
+    'csp' => [
+        'script_src' => env('CRYPTOR_CSP_SCRIPT_SRC', ''),
+        'connect_src' => env('CRYPTOR_CSP_CONNECT_SRC', ''),
+    ],
+
 ];

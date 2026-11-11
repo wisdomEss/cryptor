@@ -31,23 +31,32 @@ class SecurityHeaders
             'Cross-Origin-Opener-Policy' => 'same-origin',
         ];
 
-        if ($request->isSecure()) {
+        // Derrière un proxy TLS, isSecure() peut être faux : force_https l'emporte.
+        if ($request->isSecure() || config('cryptor.force_https')) {
             $headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains';
         }
 
         if (! app()->environment('local', 'testing')) {
-            $headers['Content-Security-Policy'] = implode('; ', [
+            $directives = [
                 "default-src 'self'",
-                "script-src 'self' 'nonce-{$nonce}'",
+                $this->sources('script-src', ["'self'", "'nonce-{$nonce}'"], config('cryptor.csp.script_src')),
                 "style-src 'self' 'unsafe-inline' https://fonts.bunny.net",
                 "img-src 'self' data:",
                 "font-src 'self' data: https://fonts.bunny.net",
-                "connect-src 'self'",
+                $this->sources('connect-src', ["'self'"], config('cryptor.csp.connect_src')),
                 "object-src 'none'",
                 "base-uri 'self'",
                 "form-action 'self'",
                 "frame-ancestors 'none'",
-            ]);
+            ];
+
+            // Le navigateur remonte lui-même en https toute ressource http : filet de sécurité
+            // contre le contenu mixte.
+            if (config('cryptor.force_https')) {
+                $directives[] = 'upgrade-insecure-requests';
+            }
+
+            $headers['Content-Security-Policy'] = implode('; ', $directives);
         }
 
         foreach ($headers as $name => $value) {
@@ -57,5 +66,16 @@ class SecurityHeaders
         }
 
         return $response;
+    }
+
+    /** Directive CSP : sources de base + sources supplémentaires configurées (listes séparées par des espaces). */
+    private function sources(string $directive, array $base, ?string $extra): string
+    {
+        $extras = preg_split('/\s+/', trim((string) $extra), -1, PREG_SPLIT_NO_EMPTY);
+
+        // On n'accepte que des sources « sûres » : pas de jokers génériques ni de caractères de contrôle.
+        $extras = array_filter($extras, fn ($source) => preg_match('/^(https?:\/\/[A-Za-z0-9.*-]+(:\d+)?|wss:\/\/[A-Za-z0-9.-]+(:\d+)?)$/', $source) === 1 && $source !== 'https://*');
+
+        return $directive.' '.implode(' ', [...$base, ...$extras]);
     }
 }

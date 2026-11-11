@@ -2,12 +2,10 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import type { DefineComponent } from 'vue';
 import { createApp, h } from 'vue';
-import type { Config } from 'ziggy-js';
 import { ZiggyVue } from 'ziggy-js';
 
 import '../css/app.css';
 import { initializeTheme } from './composables/useAppearance';
-import { Ziggy } from './ziggy';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -23,7 +21,9 @@ createInertiaApp({
     setup({ el, App, props, plugin }) {
         createApp({ render: () => h(App, props) })
             .use(plugin)
-            .use(ZiggyVue, Ziggy as unknown as Config)
+            // Sans configuration : Ziggy lit celle que le serveur injecte à chaque requête (@routes),
+            // avec le bon domaine et le bon schéma. Un fichier statique figerait « localhost ».
+            .use(ZiggyVue)
             .mount(el);
     },
 
