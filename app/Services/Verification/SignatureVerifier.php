@@ -1,0 +1,328 @@
+<?php
+
+namespace App\Services\Verification;
+
+use App\Models\FileSigned;
+use App\Models\Signature;
+use App\Models\SignatureVerification;
+use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
+
+/**
+ * Logique de vérification des signatures, partagée par la vérification
+ * authentifiée (VerificationController) et publique (PublicSignaturesController).
+ *
+ * Le service ne produit pas de réponse HTTP : il enregistre la vérification et
+ * renvoie des données brutes ; chaque contrôleur les met en forme.
+ */
+class SignatureVerifier
+{
+    /** Messages utilisateur : l'UI connectée est en anglais, la page publique en français. */
+    private const MESSAGES = [
+        'en' => [
+            'authentic' => 'The document is authentic and the signature is valid.',
+            'modified_and_invalid' => 'The document has been modified and the signature is invalid.',
+            'modified' => 'The document has been modified since it was signed.',
+            'invalid' => 'The signature is invalid or has been tampered with.',
+            'failed' => 'Verification failed.',
+            'no_signature' => 'No signature found for this document.',
+            'signature_file_required' => 'Signature file is required for external document verification.',
+            'invalid_format' => 'Invalid signature format.',
+            'no_public_key' => 'No public key found in the signature.',
+            'external_valid' => 'External signature is valid',
+            'external_invalid' => 'External signature is invalid',
+        ],
+        'fr' => [
+            'authentic' => 'Le document est authentique et la signature est valide.',
+            'modified_and_invalid' => 'Le document a été modifié et la signature est invalide.',
+            'modified' => 'Le document a été modifié depuis sa signature.',
+            'invalid' => 'La signature est invalide ou a été altérée.',
+            'failed' => 'La vérification a échoué.',
+            'no_signature' => 'Aucune signature trouvée pour ce document.',
+            'signature_file_required' => 'Un fichier de signature est requis pour vérifier un document externe.',
+            'invalid_format' => 'Format de signature invalide.',
+            'no_public_key' => 'Aucune clé publique trouvée dans la signature.',
+            'external_valid' => 'La signature externe est valide',
+            'external_invalid' => 'La signature externe est invalide',
+        ],
+    ];
+
+    public function text(string $key, string $locale = 'en'): string
+    {
+        return self::MESSAGES[$locale][$key] ?? self::MESSAGES['en'][$key] ?? $key;
+    }
+
+    /** Message de synthèse d'une vérification de document interne. */
+    public function message(bool $success, bool $documentIntegrity, bool $signatureValid, string $locale = 'en'): string
+    {
+        return $this->text(match (true) {
+            $success => 'authentic',
+            ! $documentIntegrity && ! $signatureValid => 'modified_and_invalid',
+            ! $documentIntegrity => 'modified',
+            ! $signatureValid => 'invalid',
+            default => 'failed',
+        }, $locale);
+    }
+
+    /** Retrouve un document déjà signé dans le système à partir de son empreinte SHA-256. */
+    public function findSignedFile(string $sha256): ?FileSigned
+    {
+        return FileSigned::where('file_hash', $sha256)->first();
+    }
+
+    /**
+     * Vérifie un document connu du système et journalise la vérification.
+     *
+     * @return array{verification: SignatureVerification, signature: Signature, success: bool, document_integrity: bool, signature_valid: bool, key_valid: bool}
+     */
+    public function verifyInternal(
+        FileSigned $fileSigned,
+        UploadedFile $file,
+        ?UploadedFile $signatureFile,
+        Request $request,
+        float $startTime,
+        ?int $verifierId,
+        bool $isPublic,
+        bool $withToken,
+        string $locale = 'en',
+    ): array {
+        $signature = $fileSigned->signatures()
+            ->with(['keyPair', 'signer'])
+            ->latest()
+            ->first();
+
+        if (! $signature) {
+            throw new RuntimeException($this->text('no_signature', $locale));
+        }
+
+        $currentHash = hash_file('sha256', $file->getRealPath());
+        $documentIntegrity = hash_equals($fileSigned->file_hash, $currentHash);
+        $signatureValid = $this->verifySignature($signature, file_get_contents($file->getRealPath()));
+        $keyValid = (bool) ($signature->keyPair && $signature->keyPair->isValid());
+        $success = $documentIntegrity && $signatureValid && $keyValid;
+
+        $verification = SignatureVerification::create([
+            'signature_id' => $signature->id,
+            'verifier_id' => $verifierId,
+            'verified_hash' => $currentHash,
+            'expected_hash' => $fileSigned->file_hash,
+            'result' => $success,
+            'verification_type' => $signatureFile ? 'signature' : 'hash',
+            'verification_details' => [
+                'document_integrity' => $documentIntegrity,
+                'signature_valid' => $signatureValid,
+                'key_valid' => $keyValid,
+                'format' => $signature->signature_format,
+                'algorithm' => $signature->algorithm_used,
+            ],
+            'signature_timestamp' => $signature->signed_at,
+            'document_timestamp' => $fileSigned->created_at,
+            'verifier_ip' => $request->ip(),
+            'verifier_user_agent' => $request->userAgent(),
+            'verification_duration_ms' => $this->elapsedMs($startTime),
+            'is_public_verification' => $isPublic,
+        ]);
+
+        if ($withToken) {
+            $verification->generateVerificationToken();
+        }
+
+        return [
+            'verification' => $verification,
+            'signature' => $signature,
+            'success' => $success,
+            'document_integrity' => $documentIntegrity,
+            'signature_valid' => $signatureValid,
+            'key_valid' => $keyValid,
+        ];
+    }
+
+    /**
+     * Vérifie un document « externe » (inconnu du système) à partir d'un fichier de signature.
+     *
+     * @return array{verification: SignatureVerification, success: bool, document_integrity: bool, signature_valid: bool, data: array, public_key: string}
+     */
+    public function verifyExternal(
+        UploadedFile $file,
+        ?UploadedFile $signatureFile,
+        Request $request,
+        float $startTime,
+        ?int $verifierId,
+        bool $isPublic,
+        bool $withToken,
+        string $locale = 'en',
+    ): array {
+        if (! $signatureFile) {
+            throw new RuntimeException($this->text('signature_file_required', $locale));
+        }
+
+        $data = $this->parseExternalSignature((string) file_get_contents($signatureFile->getRealPath()));
+
+        if (! $data || ! isset($data['signature'])) {
+            throw new RuntimeException($this->text('invalid_format', $locale));
+        }
+
+        $publicKey = $this->externalPublicKey($data);
+
+        if (! $publicKey) {
+            throw new RuntimeException($this->text('no_public_key', $locale));
+        }
+
+        $signatureValid = $this->opensslVerify(
+            file_get_contents($file->getRealPath()),
+            base64_decode($data['signature'], true) ?: '',
+            $publicKey
+        );
+
+        $fileHash = hash_file('sha256', $file->getRealPath());
+        $documentIntegrity = isset($data['file_hash']) ? hash_equals((string) $data['file_hash'], $fileHash) : true;
+        $success = $signatureValid && $documentIntegrity;
+
+        $verification = SignatureVerification::create([
+            'signature_id' => null,
+            'verifier_id' => $verifierId,
+            'verified_hash' => $fileHash,
+            'expected_hash' => $data['file_hash'] ?? null,
+            'result' => $success,
+            'verification_type' => 'external',
+            'verification_details' => [
+                'signature_valid' => $signatureValid,
+                'document_integrity' => $documentIntegrity,
+                'format' => $data['format'] ?? 'unknown',
+                'external' => true,
+            ],
+            'signature_timestamp' => $data['timestamp'] ?? null,
+            'verifier_ip' => $request->ip(),
+            'verifier_user_agent' => $request->userAgent(),
+            'verification_duration_ms' => $this->elapsedMs($startTime),
+            'is_public_verification' => $isPublic,
+        ]);
+
+        if ($withToken) {
+            $verification->generateVerificationToken();
+        }
+
+        return [
+            'verification' => $verification,
+            'success' => $success,
+            'document_integrity' => $documentIntegrity,
+            'signature_valid' => $signatureValid,
+            'data' => $data,
+            'public_key' => $publicKey,
+        ];
+    }
+
+    /**
+     * Vérifie la valeur d'une signature enregistrée contre le contenu brut du document.
+     *
+     * Formats pris en charge : structure JSON historique (`pdf`/`PAdES`/`cms`/`CAdES`)
+     * ou signature base64 brute. Toute erreur renvoie `false` (jamais d'exception).
+     */
+    public function verifySignature(Signature $signature, string $content): bool
+    {
+        try {
+            $publicKey = $signature->keyPair?->public_key;
+
+            if (! $publicKey) {
+                return false;
+            }
+
+            $json = json_decode((string) $signature->signature_value, true);
+
+            if (is_array($json) && isset($json['signature'])) {
+                $digest = $json['signedAttributes']['messageDigest'] ?? null;
+
+                if ($digest !== null && ! hash_equals(base64_decode($digest, true) ?: '', hash('sha256', $content, true))) {
+                    return false;
+                }
+
+                return $this->opensslVerify($content, base64_decode($json['signature'], true) ?: '', $publicKey);
+            }
+
+            return $this->opensslVerify($content, base64_decode((string) $signature->signature_value, true) ?: '', $publicKey);
+        } catch (\Throwable $e) {
+            Log::error('Signature verification error: '.$e->getMessage());
+
+            return false;
+        }
+    }
+
+    /** Lit un fichier de signature externe : JSON, PKCS#7 ou signature binaire brute. */
+    public function parseExternalSignature(string $content): ?array
+    {
+        $data = json_decode($content, true);
+
+        if (is_array($data) && isset($data['signature'])) {
+            return $data;
+        }
+
+        $certificates = [];
+        if (@openssl_pkcs7_read($content, $certificates)) {
+            return [
+                'format' => 'PKCS7',
+                'signature' => base64_encode($content),
+                'certificates' => $certificates,
+            ];
+        }
+
+        if ($this->isBinary($content)) {
+            return [
+                'format' => 'raw',
+                'signature' => base64_encode($content),
+            ];
+        }
+
+        return null;
+    }
+
+    /** Empreinte courte d'une clé publique (16 caractères hexadécimaux). */
+    public function fingerprint(string $publicKey): string
+    {
+        $key = preg_replace('/-----(BEGIN|END) (PUBLIC|PRIVATE) KEY-----/', '', $publicKey);
+        $key = preg_replace('/\s+/', '', (string) $key);
+
+        return substr(hash('sha256', (string) $key), 0, 16);
+    }
+
+    /** Empreinte lisible : `AB:CD:EF:...` (utilisée par la page publique). */
+    public function formattedFingerprint(string $publicKey): string
+    {
+        return implode(':', str_split(strtoupper($this->fingerprint($publicKey)), 2));
+    }
+
+    private function externalPublicKey(array $data): ?string
+    {
+        if (! empty($data['public_key'])) {
+            return $data['public_key'];
+        }
+
+        if (! empty($data['certificates'][0])) {
+            $certificate = @openssl_x509_read($data['certificates'][0]);
+
+            return $certificate ? (openssl_pkey_get_details(openssl_pkey_get_public($certificate))['key'] ?? null) : null;
+        }
+
+        return null;
+    }
+
+    private function opensslVerify(string $content, string $signature, string $publicKey): bool
+    {
+        if ($signature === '') {
+            return false;
+        }
+
+        return openssl_verify($content, $signature, $publicKey, OPENSSL_ALGO_SHA256) === 1;
+    }
+
+    private function isBinary(string $content): bool
+    {
+        return ! mb_check_encoding($content, 'UTF-8') || preg_match('/[^\x20-\x7E\r\n\t]/', $content) === 1;
+    }
+
+    private function elapsedMs(float $startTime): int
+    {
+        return (int) round((microtime(true) - $startTime) * 1000);
+    }
+}

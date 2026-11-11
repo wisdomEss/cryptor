@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Verifications;
 
 use App\Http\Controllers\Controller;
-use App\Models\FileSigned;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
+use App\Services\Verification\SignatureVerifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +13,8 @@ use Inertia\Inertia;
 
 class VerificationController extends Controller
 {
+    public function __construct(private readonly SignatureVerifier $verifier) {}
+
     /**
      * Display a listing of verifications.
      */
@@ -109,27 +111,13 @@ class VerificationController extends Controller
 
     public function create()
     {
-        // Récupérer les signatures récentes pour l'affichage
-        $recentSignatures = Signature::with(['file', 'signer'])
-            ->latest()
-            ->take(5)
-            ->get()
-            ->map(function ($signature) {
-                return [
-                    'id' => $signature->id,
-                    'file_name' => $signature->file->original_file_name,
-                    'signer_name' => $signature->signer->name,
-                    'signed_at' => $signature->signed_at->diffForHumans(),
-                ];
-            });
-
         return inertia('verifications/Create', [
-            'recentSignatures' => $recentSignatures,
+            'recentSignatures' => $this->getRecentSignatures(),
         ]);
     }
 
     /**
-     * Vérification d'un document signé dans notre système
+     * Vérification d'un document, signé dans notre système ou externe.
      */
     public function store(Request $request)
     {
@@ -147,21 +135,11 @@ class VerificationController extends Controller
             $file = $request->file('file');
             $signatureFile = $request->file('signature_file');
 
-            $fileHash = hash_file('sha256', $file->getRealPath());
+            $fileSigned = $this->verifier->findSignedFile(hash_file('sha256', $file->getRealPath()));
 
-            $fileSigned = FileSigned::where('file_hash', $fileHash)
-                ->orWhereHas('signatures', function ($query) use ($fileHash) {
-                    $query->whereHas('verifications', function ($q) use ($fileHash) {
-                        $q->where('verified_hash', $fileHash);
-                    });
-                })
-                ->first();
-
-            $isExternalVerification = ! $fileSigned;
-
-            $result = $isExternalVerification
-                ? $this->verifyExternalDocument($file, $signatureFile, $request, $startTime)
-                : $this->verifyInternalDocument($fileSigned, $file, $signatureFile, $request, $startTime);
+            $result = $fileSigned
+                ? $this->verifyInternal($fileSigned, $file, $signatureFile, $request, $startTime)
+                : $this->verifyExternal($file, $signatureFile, $request, $startTime);
 
             DB::commit();
 
@@ -169,7 +147,6 @@ class VerificationController extends Controller
                 'recentSignatures' => $this->getRecentSignatures(),
                 'verificationResult' => $result,
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
 
@@ -186,317 +163,73 @@ class VerificationController extends Controller
         }
     }
 
-    private function verifyInternalDocument($fileSigned, $file, $signatureFile, $request, $startTime)
+    private function verifyInternal($fileSigned, $file, $signatureFile, Request $request, float $startTime): array
     {
-        $signature = $fileSigned->signatures()
-            ->with(['keyPair', 'signer'])
-            ->latest()
-            ->first();
-
-        if (! $signature) {
-            throw new \Exception('No signature found for this document.');
-        }
-
-        $currentHash = hash_file('sha256', $file->getRealPath());
-        $documentIntegrity = ($currentHash === $fileSigned->file_hash);
-
-        $signatureValid = $this->verifySignatureFormat(
-            $signature,
-            $file,
-            $signatureFile
+        $r = $this->verifier->verifyInternal(
+            $fileSigned, $file, $signatureFile, $request, $startTime,
+            verifierId: auth()->id(),
+            isPublic: ! auth()->check(),
+            withToken: (bool) $request->include_details,
         );
 
-        $keyValid = $signature->keyPair && $signature->keyPair->isValid();
-
-        $verificationSuccess = $documentIntegrity && $signatureValid && $keyValid;
-
-        $verification = SignatureVerification::create([
-            'signature_id' => $signature->id,
-            'verifier_id' => auth()->id(),
-            'verified_hash' => $currentHash,
-            'expected_hash' => $fileSigned->file_hash,
-            'result' => $verificationSuccess,
-            'verification_type' => $signatureFile ? 'signature' : 'hash',
-            'verification_details' => [
-                'document_integrity' => $documentIntegrity,
-                'signature_valid' => $signatureValid,
-                'key_valid' => $keyValid,
-                'format' => $signature->signature_format,
-                'algorithm' => $signature->algorithm_used,
-            ],
-            'signature_timestamp' => $signature->signed_at,
-            'document_timestamp' => $fileSigned->created_at,
-            'verifier_ip' => $request->ip(),
-            'verifier_user_agent' => $request->userAgent(),
-            'verification_duration_ms' => round((microtime(true) - $startTime) * 1000),
-            'is_public_verification' => ! auth()->check(),
-        ]);
-
-        if ($request->include_details) {
-            $verification->generateVerificationToken();
-        }
+        $signature = $r['signature'];
 
         return [
-            'success' => $verificationSuccess,
-            'message' => $this->getVerificationMessage(
-                $verificationSuccess,
-                $documentIntegrity,
-                $signatureValid
-            ),
+            'success' => $r['success'],
+            'message' => $this->verifier->message($r['success'], $r['document_integrity'], $r['signature_valid']),
             'details' => [
-                'signature_valid' => $signatureValid,
-                'document_integrity' => $documentIntegrity,
+                'signature_valid' => $r['signature_valid'],
+                'document_integrity' => $r['document_integrity'],
                 'signer' => $signature->signer->name ?? 'Unknown',
                 'signed_at' => $signature->signed_at->toIso8601String(),
                 'algorithm' => $signature->algorithm_used,
-                'fingerprint' => $this->generateFingerprint(
-                    $signature->keyPair->public_key ?? ''
-                ),
+                'fingerprint' => $this->verifier->fingerprint($signature->keyPair->public_key ?? ''),
             ],
-            'id' => $verification->id,
-            'token' => $verification->verification_token,
+            'id' => $r['verification']->id,
+            'token' => $r['verification']->verification_token,
         ];
     }
 
+    private function verifyExternal($file, $signatureFile, Request $request, float $startTime): array
+    {
+        $r = $this->verifier->verifyExternal(
+            $file, $signatureFile, $request, $startTime,
+            verifierId: auth()->id(),
+            isPublic: ! auth()->check(),
+            withToken: false,
+        );
+
+        return [
+            'success' => $r['success'],
+            'message' => $this->verifier->text($r['success'] ? 'external_valid' : 'external_invalid'),
+            'details' => [
+                'signature_valid' => $r['signature_valid'],
+                'document_integrity' => $r['document_integrity'],
+                'external' => true,
+            ],
+            'id' => $r['verification']->id,
+        ];
+    }
+
+    /**
+     * Signatures récentes de l'utilisateur connecté (signées ou déposées par lui).
+     */
     private function getRecentSignatures()
     {
         return Signature::with(['file', 'signer'])
+            ->where(function ($q) {
+                $q->where('signer_id', Auth::id())
+                    ->orWhereHas('file', fn ($f) => $f->where('uploader_id', Auth::id()));
+            })
             ->latest()
             ->take(5)
             ->get()
-            ->map(function ($signature) {
-                return [
-                    'id' => $signature->id,
-                    'file_name' => $signature->file->original_file_name,
-                    'signer_name' => $signature->signer->name,
-                    'signed_at' => $signature->signed_at->diffForHumans(),
-                ];
-            });
-    }
-
-    private function verifyExternalDocument($file, $signatureFile, $request, $startTime)
-    {
-        if (! $signatureFile) {
-            throw new \Exception('Signature file is required for external document verification.');
-        }
-
-        $signatureContent = file_get_contents($signatureFile->getRealPath());
-        $signatureData = $this->parseExternalSignature($signatureContent);
-
-        if (! $signatureData || ! isset($signatureData['signature']) || ! isset($signatureData['public_key'])) {
-            throw new \Exception('Invalid signature format.');
-        }
-
-        $fileContent = file_get_contents($file->getRealPath());
-
-        $signatureValid = openssl_verify(
-            $fileContent, // ⚠ contenu brut
-            base64_decode($signatureData['signature']),
-            $signatureData['public_key'],
-            OPENSSL_ALGO_SHA256
-        ) === 1;
-
-        $verification = SignatureVerification::create([
-            'signature_id' => null,
-            'verifier_id' => auth()->id(),
-            'verified_hash' => hash_file('sha256', $file->getRealPath()),
-            'expected_hash' => $signatureData['file_hash'] ?? null,
-            'result' => $signatureValid,
-            'verification_type' => 'external',
-            'verification_details' => [
-                'external' => true,
-            ],
-            'signature_timestamp' => $signatureData['timestamp'] ?? null,
-            'verifier_ip' => $request->ip(),
-            'verifier_user_agent' => $request->userAgent(),
-            'verification_duration_ms' => round((microtime(true) - $startTime) * 1000),
-            'is_public_verification' => ! auth()->check(),
-        ]);
-
-        return [
-            'success' => $signatureValid,
-            'message' => $signatureValid
-                ? 'External signature is valid'
-                : 'External signature is invalid',
-            'details' => [
-                'signature_valid' => $signatureValid,
-                'document_integrity' => true,
-                'external' => true,
-            ],
-            'id' => $verification->id,
-        ];
-    }
-
-    /**
-     * Vérifie la signature selon son format
-     */
-    private function verifySignatureFormat($signature, $file, $signatureFile = null)
-    {
-        try {
-            switch ($signature->signature_format) {
-                // case 'PKCS7':
-                // case 'pkcs7':
-                //     return $this->verifyPkcs7Signature($signature, $file, $signatureFile);
-
-                case 'pdf':
-                case 'PAdES':
-                    return $this->verifyPadesSignature($signature, $file);
-
-                case 'cms':
-                case 'CAdES':
-                    return $this->verifyCmsSignature($signature, $file);
-
-                default:
-                    return $this->verifyBasicSignature($signature, $file);
-            }
-        } catch (\Exception $e) {
-            \Log::error('Signature verification error: '.$e->getMessage());
-
-            return false;
-        }
-    }
-
-    /**
-     * Vérification signature PAdES (PDF)
-     */
-    private function verifyPadesSignature($signature, $file)
-    {
-        $signatureData = json_decode($signature->signature_value, true);
-
-        if (! $signatureData || ! isset($signatureData['signature'])) {
-            return false;
-        }
-
-        $pdfContent = file_get_contents($file->getRealPath());
-
-        $keyPair = $signature->keyPair;
-        // dd($keyPair);
-        if (! $keyPair || ! $keyPair->public_key) {
-            return false;
-        }
-
-        return openssl_verify(
-            $pdfContent, // ⚠ contenu brut
-            base64_decode($signatureData['signature']),
-            $keyPair->public_key,
-            OPENSSL_ALGO_SHA256
-        ) === 1;
-    }
-
-    /**
-     * Vérification signature CMS
-     */
-    private function verifyCmsSignature($signature, $file)
-    {
-        $signatureData = json_decode($signature->signature_value, true);
-
-        if (! $signatureData || ! isset($signatureData['signature'])) {
-            return false;
-        }
-
-        $fileContent = file_get_contents($file->getRealPath());
-
-        // Vérifier que le hash stocké correspond
-        if (isset($signatureData['signedAttributes']['messageDigest'])) {
-            $storedHash = base64_decode($signatureData['signedAttributes']['messageDigest']);
-            $computedHash = hash('sha256', $fileContent, true);
-
-            if ($storedHash !== $computedHash) {
-                return false;
-            }
-        }
-
-        $keyPair = $signature->keyPair;
-        // dd($keyPair);
-        if (! $keyPair || ! $keyPair->public_key) {
-            return false;
-        }
-
-        return openssl_verify(
-            $fileContent, // ⚠ contenu brut
-            base64_decode($signatureData['signature']),
-            $keyPair->public_key,
-            OPENSSL_ALGO_SHA256
-        ) === 1;
-    }
-
-    /**
-     * Vérification signature basique
-     */
-    private function verifyBasicSignature($signature, $file)
-    {
-        $fileContent = file_get_contents($file->getRealPath());
-
-        $keyPair = $signature->keyPair;
-        if (! $keyPair || ! $keyPair->public_key) {
-            return false;
-        }
-
-        return openssl_verify(
-            $fileContent, // ⚠ contenu brut, pas hash
-            base64_decode($signature->signature_value),
-            $keyPair->public_key,
-            OPENSSL_ALGO_SHA256
-        ) === 1;
-    }
-
-    /**
-     * Parse une signature externe
-     */
-    private function parseExternalSignature($content)
-    {
-        // Essayer de parser comme JSON
-        $data = json_decode($content, true);
-        if ($data && isset($data['signature'])) {
-            return $data;
-        }
-
-        // Essayer de parser comme PKCS#7
-        $pkcs7Data = openssl_pkcs7_read($content, $certificates);
-        if ($pkcs7Data) {
-            return [
-                'format' => 'PKCS7',
-                'signature' => base64_encode($content),
-                'certificates' => $certificates,
-            ];
-        }
-
-        return null;
-    }
-
-    /**
-     * Génère une empreinte de clé
-     */
-    private function generateFingerprint($publicKey)
-    {
-        $key = preg_replace('/-----(BEGIN|END) (PUBLIC|PRIVATE) KEY-----/', '', $publicKey);
-        $key = preg_replace('/\s+/', '', $key);
-
-        return substr(hash('sha256', $key), 0, 16);
-    }
-
-    /**
-     * Message de vérification
-     */
-    private function getVerificationMessage($success, $documentIntegrity, $signatureValid)
-    {
-        if ($success) {
-            return 'The document is authentic and the signature is valid.';
-        }
-
-        if (! $documentIntegrity && ! $signatureValid) {
-            return 'The document has been modified and the signature is invalid.';
-        }
-
-        if (! $documentIntegrity) {
-            return 'The document has been modified since it was signed.';
-        }
-
-        if (! $signatureValid) {
-            return 'The signature is invalid or has been tampered with.';
-        }
-
-        return 'Verification failed.';
+            ->map(fn ($signature) => [
+                'id' => $signature->id,
+                'file_name' => $signature->file->original_file_name,
+                'signer_name' => $signature->signer->name,
+                'signed_at' => $signature->signed_at->diffForHumans(),
+            ]);
     }
 
     /**
@@ -518,25 +251,15 @@ class VerificationController extends Controller
      */
     public function show($id)
     {
-        $userId = Auth::id();
-
-        // Sécurité : seule la personne qui a demandé la vérification, qui a
-        // signé le document, qui l'a uploadé, ou qui a réalisé la vérification
-        // elle-même, peut la consulter.
         $verification = SignatureVerification::with([
             'signature.file',
             'signature.signer',
             'signature.keyPair',
             'verifier',
-        ])
-            ->where(function ($query) use ($userId) {
-                $query->where('verifier_id', $userId)
-                    ->orWhereHas('signature', function ($q) use ($userId) {
-                        $q->where('signer_id', $userId)
-                            ->orWhereHas('file', fn ($fq) => $fq->where('uploader_id', $userId));
-                    });
-            })
-            ->findOrFail($id);
+        ])->findOrFail($id);
+
+        // SignatureVerificationPolicy : auteur de la vérification, signataire ou uploader (404 sinon).
+        $this->authorize('view', $verification);
 
         return inertia('verifications/Show', [
             'verification' => $verification,

@@ -27,7 +27,7 @@ npm run build
 
 ## Architecture métier
 
-Les contrôleurs sont groupés par domaine dans `app/Http/Controllers/<Domaine>/` ; toute la logique est dans les contrôleurs (pas de services ni de FormRequest pour le métier).
+Les contrôleurs sont groupés par domaine dans `app/Http/Controllers/<Domaine>/` ; la logique de clés/signatures est dans les contrôleurs, mais **la vérification est dans `app/Services/Verification/SignatureVerifier.php`** (pas de FormRequest pour le métier).
 
 | Domaine | Contrôleur | Pages Inertia |
 |---|---|---|
@@ -48,12 +48,12 @@ Flux :
 2. **Vérification** : recherche du `FileSigned` par hash ; s'il existe → `openssl_verify` avec la clé publique du `KeyPair` ; sinon → vérification « externe » à partir d'un fichier de signature fourni.
 3. **Publique** : `GET /verifications/public` (page) + `POST /api/public/verify` (JSON, par token ou par upload, sans auth).
 
-La logique de vérification est **dupliquée** entre `VerificationController` et `PublicSignaturesController` : toute correction doit être faite dans les deux, ou mieux, extraite dans un service.
+La logique de vérification vit dans `SignatureVerifier` (partagée par `VerificationController` et `PublicSignaturesController`, qui ne font que la mise en forme : messages EN côté connecté, FR côté public). Toute correction se fait dans le service.
 
 ## Conventions
 
 - Code, commentaires et messages de commit en français ; les messages flash/erreurs côté backend sont en anglais, l'UI publique en français.
-- Toujours scoper les requêtes à l'utilisateur courant (`where('user_id'|'signer_id', auth()->id())`) : c'est le seul contrôle d'accès, il n'y a pas de Policies.
+- Autorisation : **Policies** dans `app/Policies/` (`KeyPair`, `Signature`, `FileSigned`, `SignatureVerification`), appelées via `$this->authorize(...)` ; un refus répond **404** (`denyAsNotFound`) pour ne pas révéler l'existence de la ressource. Les listes restent scopées à l'utilisateur (`where('user_id'|'signer_id', auth()->id())`).
 - Les modèles utilisent `$fillable` : **toute colonne écrite via `create()`/`update()` doit y figurer**, sinon elle est ignorée en silence (plusieurs bugs existants viennent de là).
 - Les routes custom d'une ressource (`/keys/revoked`, `/signatures/pending`...) doivent être déclarées **avant** `Route::resource(...)`, sinon `show` les capture.
 
@@ -83,7 +83,7 @@ La suite (pint, eslint, vue-tsc, `php artisan test`, `npm run build`) est entiè
 
 ### Dette restante / limites connues
 
-- La gestion des clés et signatures reste entièrement dans les contrôleurs (pas de services/policies) ; l'autorisation est un simple `where('user_id', auth()->id())` partout.
+- La gestion des clés et signatures (création, signature) reste dans les contrôleurs ; seuls la vérification (service) et l'autorisation (Policies) ont été extraits.
 - `keys/Edit.vue` et `keys/Revoke.vue` étaient des pages vides (« Page en construction ») ; elles ont été implémentées mais restent minimales.
 - Pas de vraie bibliothèque PAdES/CAdES : les « signatures PDF/CMS » sont une structure JSON maison, pas un format standard vérifiable par des outils tiers.
 
@@ -99,7 +99,7 @@ La suite (pint, eslint, vue-tsc, `php artisan test`, `npm run build`) est entiè
 Contrainte directrice : **tout le monde doit pouvoir cloner et utiliser le projet** (`composer setup` + `composer dev`, SQLite par défaut, aucun service ni secret externe obligatoire).
 
 - [x] Phase 1 — installation reproductible (README, `composer setup` idempotent, paquet npm `node` retiré), en-têtes de sécurité (`SecurityHeaders`, CSP avec nonce Vite/Ziggy), SAST (`.github/workflows/security.yml` : CodeQL + Semgrep).
-- [ ] Phase 2 — extraire la vérification dans un service unique (fin de la duplication `VerificationController` / `PublicSignaturesController`) + Policies (`KeyPair`, `Signature`, `FileSigned`, `SignatureVerification`).
+- [x] Phase 2 — service `SignatureVerifier` unique (fin de la duplication, −570 lignes dans les contrôleurs) + 4 Policies ; correctifs au passage : fuite des « signatures récentes » d'autres utilisateurs sur `verifications/create`, et erreur 500 sur une signature externe sans `file_hash` (`expected_hash` rendu nullable). 78 tests.
 - [ ] Phase 3 — vraies signatures CMS détachées via `openssl_cms_sign/verify` (déjà dispo dans PHP, aucune dépendance) ; compatibilité avec l'ancien JSON conservée en lecture seule.
 - [ ] Phase 4 — AC interne auto-initialisée (`cryptor:ca-init`, générée au premier usage), certificats signés par l'AC, validation de chaîne, liste de révocation publique.
 - [ ] Phase 5 — horodatage RFC 3161 optionnel (`TSA_URL` dans `.env`, désactivé par défaut) ; PAdES réel hors périmètre sans bibliothèque PDF dédiée (retirer l'exemple `byteRange` factice).

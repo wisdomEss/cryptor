@@ -249,9 +249,7 @@ class KeyController extends Controller
     public function show($id)
     {
 
-        $key = KeyPair::where('user_id', Auth::id())
-            ->where('id', $id)
-            ->firstOrFail();
+        $key = $this->ownedKey($id, 'view');
 
         return Inertia::render('keys/Show', [
             'keyData' => [
@@ -284,9 +282,7 @@ class KeyController extends Controller
      */
     public function edit($id)
     {
-        $key = KeyPair::where('user_id', Auth::id())
-            ->where('id', $id)
-            ->firstOrFail();
+        $key = $this->ownedKey($id, 'view');
 
         return Inertia::render('keys/Edit', [
             'keyData' => [
@@ -309,9 +305,7 @@ class KeyController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $key = KeyPair::where('user_id', Auth::id())
-            ->where('id', $id)
-            ->firstOrFail();
+        $key = $this->ownedKey($id, 'update');
 
         $validated = $request->validate([
             'key_name' => 'sometimes|string|max:255',
@@ -354,9 +348,7 @@ class KeyController extends Controller
      */
     public function destroy($id)
     {
-        $key = KeyPair::where('user_id', Auth::id())
-            ->where('id', $id)
-            ->firstOrFail();
+        $key = $this->ownedKey($id, 'delete');
 
         // Empêcher la suppression si c'est la clé par défaut et qu'il y a d'autres clés
         if ($key->is_default) {
@@ -384,9 +376,7 @@ class KeyController extends Controller
      */
     public function download($id)
     {
-        $key = KeyPair::where('user_id', Auth::id())
-            ->where('id', $id)
-            ->firstOrFail();
+        $key = $this->ownedKey($id, 'view');
 
         $filename = Str::slug($key->key_name).'.pub';
         $headers = [
@@ -402,9 +392,7 @@ class KeyController extends Controller
      */
     public function downloadPrivate($id, Request $request)
     {
-        $key = KeyPair::where('user_id', Auth::id())
-            ->where('id', $id)
-            ->firstOrFail();
+        $key = $this->ownedKey($id, 'view');
 
         // Vérifier le mot de passe
         $request->validate([
@@ -425,9 +413,7 @@ class KeyController extends Controller
      */
     public function revoke(Request $request, $id)
     {
-        $key = KeyPair::where('user_id', Auth::id())
-            ->where('id', $id)
-            ->firstOrFail();
+        $key = $this->ownedKey($id, 'update');
 
         $validated = $request->validate([
             'reason' => 'nullable|string|max:500',
@@ -456,9 +442,7 @@ class KeyController extends Controller
      */
     public function activate($id)
     {
-        $key = KeyPair::where('user_id', Auth::id())
-            ->where('id', $id)
-            ->firstOrFail();
+        $key = $this->ownedKey($id, 'update');
 
         if ($key->is_revoked) {
             return redirect()->back()
@@ -478,9 +462,7 @@ class KeyController extends Controller
      */
     public function deactivate($id)
     {
-        $key = KeyPair::where('user_id', Auth::id())
-            ->where('id', $id)
-            ->firstOrFail();
+        $key = $this->ownedKey($id, 'update');
 
         // Empêcher la désactivation de la clé par défaut
         if ($key->is_default) {
@@ -501,9 +483,7 @@ class KeyController extends Controller
      */
     public function setDefault($id)
     {
-        $key = KeyPair::where('user_id', Auth::id())
-            ->where('id', $id)
-            ->firstOrFail();
+        $key = $this->ownedKey($id, 'update');
 
         if ($key->is_revoked || ! $key->is_active) {
             return redirect()->back()
@@ -527,9 +507,7 @@ class KeyController extends Controller
      */
     public function exportPem($id)
     {
-        $key = KeyPair::where('user_id', Auth::id())
-            ->where('id', $id)
-            ->firstOrFail();
+        $key = $this->ownedKey($id, 'view');
 
         return response($key->public_key)
             ->header('Content-Type', 'application/x-pem-file')
@@ -541,9 +519,7 @@ class KeyController extends Controller
      */
     public function exportSsh($id)
     {
-        $key = KeyPair::where('user_id', Auth::id())
-            ->where('id', $id)
-            ->firstOrFail();
+        $key = $this->ownedKey($id, 'view');
 
         // Convertir PEM en SSH (si RSA)
         if ($key->algorithm_used === 'rsa') {
@@ -574,5 +550,17 @@ class KeyController extends Controller
         }
 
         throw new \Exception('Unsupported key type for SSH export');
+    }
+
+    /**
+     * Récupère une clé et vérifie via la KeyPairPolicy que l'utilisateur y a droit
+     * (404 sinon, pour ne pas révéler l'existence de la ressource).
+     */
+    private function ownedKey(int|string $id, string $ability = 'view'): KeyPair
+    {
+        $key = KeyPair::findOrFail($id);
+        $this->authorize($ability, $key);
+
+        return $key;
     }
 }

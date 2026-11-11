@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Files;
 
 use App\Http\Controllers\Controller;
 use App\Models\FileSigned;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -17,14 +16,8 @@ class FileController extends Controller
      */
     public function download(int $file): StreamedResponse
     {
-        $fileSigned = FileSigned::where('id', $file)
-            ->where(function ($query) {
-                $query->where('uploader_id', Auth::id())
-                    ->orWhereHas('signatures', function ($q) {
-                        $q->where('signer_id', Auth::id());
-                    });
-            })
-            ->firstOrFail();
+        $fileSigned = FileSigned::findOrFail($file);
+        $this->authorize('download', $fileSigned);
 
         // file_path est accesseur -> chemin absolu sur le disque 'local'.
         $relativePath = $fileSigned->getRawOriginal('file_path');

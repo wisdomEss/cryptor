@@ -26,9 +26,9 @@ class SignatureController extends Controller
             },
             'verifications.verifier',
         ])
-            ->where('id', $id)
-            ->where('signer_id', auth()->id()) // Sécurité : seule la signature de l'utilisateur
-            ->firstOrFail();
+            ->findOrFail($id);
+
+        $this->authorize('view', $signature); // seul le signataire (404 sinon)
 
         // Formater les données pour la vue
         $formattedSignature = [
@@ -104,9 +104,7 @@ class SignatureController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $signature = Signature::where('id', $id)
-            ->where('signer_id', auth()->id())
-            ->firstOrFail();
+        $signature = $this->ownedSignature($id, 'update');
 
         $request->validate([
             'validation_notes' => 'nullable|string|max:500',
@@ -163,9 +161,7 @@ class SignatureController extends Controller
      */
     public function revoke(Request $request, $id)
     {
-        $signature = Signature::where('id', $id)
-            ->where('signer_id', auth()->id())
-            ->firstOrFail();
+        $signature = $this->ownedSignature($id, 'update');
 
         $request->validate([
             'revocation_reason' => 'required|string|max:500',
@@ -234,9 +230,7 @@ class SignatureController extends Controller
      */
     public function destroy($id)
     {
-        $signature = Signature::where('id', $id)
-            ->where('signer_id', auth()->id())
-            ->firstOrFail();
+        $signature = $this->ownedSignature($id, 'delete');
 
         try {
             DB::beginTransaction();
@@ -825,5 +819,17 @@ class SignatureController extends Controller
         $verification->save();
 
         return $verification;
+    }
+
+    /**
+     * Récupère une signature et vérifie via la SignaturePolicy que l'utilisateur
+     * en est le signataire (404 sinon).
+     */
+    private function ownedSignature(int|string $id, string $ability = 'view'): Signature
+    {
+        $signature = Signature::findOrFail($id);
+        $this->authorize($ability, $signature);
+
+        return $signature;
     }
 }
