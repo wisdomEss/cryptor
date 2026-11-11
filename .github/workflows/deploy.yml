@@ -60,14 +60,15 @@ jobs:
       - name: Typecheck (vue-tsc)
         run: npx vue-tsc --noEmit
 
+      # Doit précéder les tests : les pages Inertia lisent public/build/manifest.json.
+      - name: Build assets
+        run: npm run build
+
       - name: Run PHP test suite
         run: php artisan test
         env:
           DB_CONNECTION: sqlite
           DB_DATABASE: ':memory:'
-
-      - name: Build assets
-        run: npm run build
 
   deploy:
     needs: test
