@@ -93,6 +93,8 @@ class PublicSignaturesController extends Controller
             $details = [
                 'signature_valid' => $signature->is_valid,
                 'document_integrity' => true,
+                // Recalculé à chaque appel : une clé révoquée depuis apparaît comme telle.
+                'certificate_trust' => $this->verifier->certificateTrust($signature->keyPair?->certificate_data),
                 'signer' => $signature->signer->name ?? 'Inconnu',
                 'signed_at' => $signature->signed_at?->toIso8601String(),
                 'algorithm' => $signature->algorithm_used,
@@ -210,6 +212,7 @@ class PublicSignaturesController extends Controller
             'details' => [
                 'signature_valid' => $r['signature_valid'],
                 'document_integrity' => $r['document_integrity'],
+                'certificate_trust' => $r['certificate_trust'],
                 'signer' => $signature->signer->name ?? 'Inconnu',
                 'signed_at' => $signature->signed_at?->toIso8601String(),
                 'algorithm' => $signature->algorithm_used,
@@ -239,6 +242,7 @@ class PublicSignaturesController extends Controller
             'details' => [
                 'signature_valid' => $r['signature_valid'],
                 'document_integrity' => $r['document_integrity'],
+                'certificate_trust' => $r['certificate_trust'],
                 'signer' => $data['signer'] ?? 'Signataire externe',
                 'signed_at' => $data['timestamp'] ?? null,
                 'algorithm' => $data['algorithm'] ?? 'Inconnu',

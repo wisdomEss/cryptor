@@ -7,6 +7,7 @@ use App\Models\FileSigned;
 use App\Models\KeyPair;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
+use App\Services\Crypto\CertificateAuthority;
 use App\Services\Crypto\CmsService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
@@ -17,7 +18,7 @@ use Inertia\Inertia;
 
 class SignatureController extends Controller
 {
-    public function __construct(private readonly CmsService $cms) {}
+    public function __construct(private readonly CmsService $cms, private readonly CertificateAuthority $ca) {}
 
     public function show(Request $request, $id)
     {
@@ -636,7 +637,11 @@ class SignatureController extends Controller
         }
 
         try {
-            return $this->cms->sign($filePath, $certificate, $privateKey);
+            // Si le certificat vient de notre AC, on embarque celui de l'AC : un vérificateur
+            // tiers pourra alors valider toute la chaîne (`openssl cms -verify -CAfile ca.crt`).
+            $caPath = $this->ca->isIssuedByCa($certificate) ? $this->ca->certificatePath() : null;
+
+            return $this->cms->sign($filePath, $certificate, $privateKey, $caPath);
         } catch (\Exception $e) {
             throw new \Exception('Signature generation failed: '.$e->getMessage());
         }

@@ -48,12 +48,48 @@ const verificationResult = ref<null | {
         signed_at: string;
         algorithm: string;
         fingerprint: string;
+        certificate_trust?: string;
         certificate_info?: any;
         warning?: string;
     };
     verification_id?: number;
     token?: string;
 }>(null);
+
+const trustInfo = (status: string) => {
+    const infos: Record<string, { label: string; class: string }> = {
+        trusted: {
+            label: "Émis par l'autorité CRYPTOR, valide",
+            class: 'text-green-600 dark:text-green-400',
+        },
+        self_signed: {
+            label: "Auto-signé (non émis par l'autorité CRYPTOR)",
+            class: 'text-yellow-600 dark:text-yellow-400',
+        },
+        untrusted: {
+            label: 'Émetteur inconnu (autorité non reconnue)',
+            class: 'text-red-600 dark:text-red-400',
+        },
+        expired: {
+            label: 'Certificat expiré',
+            class: 'text-red-600 dark:text-red-400',
+        },
+        revoked: {
+            label: 'Certificat révoqué',
+            class: 'text-red-600 dark:text-red-400',
+        },
+        invalid: {
+            label: 'Certificat invalide',
+            class: 'text-red-600 dark:text-red-400',
+        },
+        unknown: {
+            label: 'Aucun certificat à valider',
+            class: 'text-gray-500 dark:text-gray-400',
+        },
+    };
+
+    return infos[status] ?? infos.unknown;
+};
 
 const verificationMethod = ref<'token' | 'upload'>('token');
 const verificationToken = ref('');
@@ -497,6 +533,49 @@ const getStatusBadge = (valid: boolean) => {
                                 >
                                 <div class="mt-1 text-sm">
                                     {{ verificationResult.details.algorithm }}
+                                </div>
+                            </div>
+                            <div
+                                v-if="
+                                    verificationResult.details.certificate_trust
+                                "
+                                class="rounded-lg border border-gray-200 bg-white p-3 sm:col-span-2 dark:border-gray-800 dark:bg-gray-900"
+                            >
+                                <span
+                                    class="text-xs text-gray-500 dark:text-gray-400"
+                                    >Certificat du signataire</span
+                                >
+                                <div class="mt-1 text-sm">
+                                    <span
+                                        :class="
+                                            trustInfo(
+                                                verificationResult.details
+                                                    .certificate_trust,
+                                            ).class
+                                        "
+                                        class="font-medium"
+                                    >
+                                        {{
+                                            trustInfo(
+                                                verificationResult.details
+                                                    .certificate_trust,
+                                            ).label
+                                        }}
+                                    </span>
+                                    <span
+                                        class="text-gray-500 dark:text-gray-400"
+                                    >
+                                        —
+                                        <a href="/pki/ca.crt" class="underline"
+                                            >certificat de l'autorité</a
+                                        >
+                                        ·
+                                        <a
+                                            href="/pki/revocations.json"
+                                            class="underline"
+                                            >liste de révocation</a
+                                        >
+                                    </span>
                                 </div>
                             </div>
                             <div

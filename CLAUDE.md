@@ -40,6 +40,7 @@ Les contrôleurs sont groupés par domaine dans `app/Http/Controllers/<Domaine>/
 Modèles (`app/Models`) :
 - `KeyPair` (`key_pairs`) : clé publique/privée PEM, certificat, flags `is_default` / `is_active` / `is_revoked`
 - `FileSigned` (`files_signeds`) : document uploadé, hash SHA-256, statut, compteur de signatures
+- **PKI** : `CertificateAuthority` (AC interne + chaîne + révocation) et `CmsService` (signature/vérification CMS) dans `app/Services/Crypto/`. Perdre `APP_KEY` rend l'AC et toutes les clés irrécupérables. Le certificat d'une clé et sa validité (`valid_to`) sont alignés (365 jours par défaut).
 - `Signature` (`signatures`) : `signature_value` est un **CMS détaché (RFC 5652) encodé en PEM** (`-----BEGIN CMS-----`), produit par `CmsService`. Les signatures créées avant la phase 3 contiennent l'ancien **JSON maison** (`{signature: base64, ...}`) : `SignatureVerifier` les vérifie toujours, en lecture seule
 - `SignatureVerification` (`signatures_verifications`) : journal de chaque vérification, `verification_token` pour la vérification publique
 
@@ -86,7 +87,7 @@ La suite (pint, eslint, vue-tsc, `php artisan test`, `npm run build`) est entiè
 - La gestion des clés et signatures (création, signature) reste dans les contrôleurs ; seuls la vérification (service) et l'autorisation (Policies) ont été extraits.
 - `keys/Edit.vue` et `keys/Revoke.vue` étaient des pages vides (« Page en construction ») ; elles ont été implémentées mais restent minimales.
 - Pas de PAdES : le format `pdf` est un CMS détaché du fichier, **pas** une signature incorporée dans le PDF (il faudrait une bibliothèque PDF dédiée). Le CMS, lui, est standard et vérifiable avec `openssl cms -verify -inform DER -in x.p7s -content doc -noverify -binary`.
-- La chaîne du certificat n'est pas validée (`OPENSSL_CMS_NOVERIFY`) : on contrôle la signature et que le certificat embarqué correspond à la clé enregistrée. Validation de chaîne = phase 4.
+- `CmsService::verify` utilise `OPENSSL_CMS_NOVERIFY` (signature + intégrité seulement) ; la confiance du certificat est évaluée à part par `CertificateAuthority::validateChain` (statut `certificate_trust`, **informatif** : il n'invalide pas une vérification, car les clés antérieures à l'AC ont un certificat auto-signé). En interne, le certificat embarqué doit en plus correspondre à la clé enregistrée.
 
 ### Dépendances / sécurité (2026-11-11)
 
@@ -102,7 +103,7 @@ Contrainte directrice : **tout le monde doit pouvoir cloner et utiliser le proje
 - [x] Phase 1 — installation reproductible (README, `composer setup` idempotent, paquet npm `node` retiré), en-têtes de sécurité (`SecurityHeaders`, CSP avec nonce Vite/Ziggy), SAST (`.github/workflows/security.yml` : CodeQL + Semgrep).
 - [x] Phase 2 — service `SignatureVerifier` unique (fin de la duplication, −570 lignes dans les contrôleurs) + 4 Policies ; correctifs au passage : fuite des « signatures récentes » d'autres utilisateurs sur `verifications/create`, et erreur 500 sur une signature externe sans `file_hash` (`expected_hash` rendu nullable). 78 tests.
 - [x] Phase 3 — vraies signatures CMS détachées (`app/Services/Crypto/CmsService.php`, `openssl_cms_sign/verify`, aucune dépendance) ; anciennes signatures JSON toujours vérifiables ; route `signatures.download` (.p7s DER) ; signatures externes CMS (PEM/DER) acceptées. Vérifié contre la CLI `openssl cms`. 97 tests.
-- [ ] Phase 4 — AC interne auto-initialisée (`cryptor:ca-init`, générée au premier usage), certificats signés par l'AC, validation de chaîne, liste de révocation publique.
+- [x] Phase 4 — AC interne (`app/Services/Crypto/CertificateAuthority.php`, ECDSA P-384, créée seule au premier usage, clé chiffrée par `APP_KEY`, stockée dans `storage/app/private/pki/`), certificats utilisateur signés par l'AC (extensions dans `resources/openssl/pki.cnf`, config dans `config/cryptor.php`), CMS embarquant le certificat de l'AC (`openssl cms -verify -CAfile ca.crt` valide toute la chaîne), statut `certificate_trust` (trusted/self_signed/untrusted/expired/revoked/invalid) dans les vérifications, `GET /pki/ca.crt` et `GET /pki/revocations.json` (liste signée par l'AC, sans motifs), commandes `cryptor:ca-init` et `cryptor:reissue-certificates` (migre les anciens certificats auto-signés, même clé). DN configurable (plus de ville/pays codés en dur). 114 tests.
 - [ ] Phase 5 — horodatage RFC 3161 optionnel (`TSA_URL` dans `.env`, désactivé par défaut) ; PAdES réel hors périmètre sans bibliothèque PDF dédiée (retirer l'exemple `byteRange` factice).
 - [ ] Phase 6 — pages `keys/Edit` et `keys/Revoke` complètes ; export sauvegarde d'une clé privée chiffrée par passphrase (PKCS#8) pour ne plus dépendre uniquement d'`APP_KEY`.
 - [ ] Phase 7 — couverture de tests mesurée en CI (pcov) avec seuil minimal.

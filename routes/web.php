@@ -3,6 +3,7 @@
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Files\FileController;
 use App\Http\Controllers\Keys\KeyController;
+use App\Http\Controllers\Pki\PkiController;
 use App\Http\Controllers\PublicSignatures\PublicSignaturesController;
 use App\Http\Controllers\Signatures\SignatureController;
 use App\Http\Controllers\Verifications\VerificationController;
@@ -32,6 +33,15 @@ Route::get('/', function () {
 Route::get('/verifications/public', [PublicSignaturesController::class, 'index'])
     ->name('verifications.public')
     ->middleware('throttle:30,1');
+
+// Infrastructure de clés (publique) : certificat de l'AC et liste de révocation signée.
+Route::get('/pki/ca.crt', [PkiController::class, 'certificate'])
+    ->middleware('throttle:30,1')
+    ->name('pki.ca');
+
+Route::get('/pki/revocations.json', [PkiController::class, 'revocations'])
+    ->middleware('throttle:30,1')
+    ->name('pki.revocations');
 
 /*
 |--------------------------------------------------------------------------

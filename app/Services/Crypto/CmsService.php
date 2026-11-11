@@ -23,9 +23,13 @@ class CmsService
     /**
      * Signe un fichier et renvoie le CMS détaché encodé en PEM.
      *
+     * @param  string|null  $extraCertificatesPath  fichier PEM de certificats à embarquer en plus
+     *                                              du signataire (typiquement l'AC), pour qu'un vérificateur
+     *                                              tiers dispose de toute la chaîne
+     *
      * @throws RuntimeException
      */
-    public function sign(string $contentPath, string $certificatePem, string $privateKeyPem): string
+    public function sign(string $contentPath, string $certificatePem, string $privateKeyPem, ?string $extraCertificatesPath = null): string
     {
         $out = $this->tempFile();
 
@@ -39,7 +43,8 @@ class CmsService
                 $privateKeyPem,
                 [],
                 OPENSSL_CMS_DETACHED | OPENSSL_CMS_BINARY,
-                OPENSSL_ENCODING_PEM
+                OPENSSL_ENCODING_PEM,
+                $extraCertificatesPath
             );
 
             if (! $ok) {

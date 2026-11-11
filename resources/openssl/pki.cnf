@@ -1,0 +1,23 @@
+# Configuration OpenSSL minimale de CRYPTOR : indépendante de la configuration système
+# (qui varie selon la distribution), pour que le projet se comporte pareil partout.
+
+[ req ]
+distinguished_name = req_dn
+prompt             = no
+
+[ req_dn ]
+CN = CRYPTOR
+
+# Autorité de certification interne : peut signer des certificats, mais pas d'autre AC.
+[ v3_ca ]
+basicConstraints       = critical,CA:TRUE,pathlen:0
+keyUsage               = critical,keyCertSign,cRLSign
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid:always
+
+# Certificats utilisateur : signature de documents uniquement.
+[ v3_user ]
+basicConstraints       = critical,CA:FALSE
+keyUsage               = critical,digitalSignature,nonRepudiation
+subjectKeyIdentifier   = hash
+authorityKeyIdentifier = keyid,issuer

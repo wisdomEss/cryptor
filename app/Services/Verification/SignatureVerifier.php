@@ -5,6 +5,7 @@ namespace App\Services\Verification;
 use App\Models\FileSigned;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
+use App\Services\Crypto\CertificateAuthority;
 use App\Services\Crypto\CmsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -20,7 +21,10 @@ use RuntimeException;
  */
 class SignatureVerifier
 {
-    public function __construct(private readonly CmsService $cms = new CmsService) {}
+    public function __construct(
+        private readonly CmsService $cms = new CmsService,
+        private readonly CertificateAuthority $authority = new CertificateAuthority,
+    ) {}
 
     /** Messages utilisateur : l'UI connectée est en anglais, la page publique en français. */
     private const MESSAGES = [
@@ -78,7 +82,7 @@ class SignatureVerifier
     /**
      * Vérifie un document connu du système et journalise la vérification.
      *
-     * @return array{verification: SignatureVerification, signature: Signature, success: bool, document_integrity: bool, signature_valid: bool, key_valid: bool}
+     * @return array{verification: SignatureVerification, signature: Signature, success: bool, document_integrity: bool, signature_valid: bool, key_valid: bool, certificate_trust: string}
      */
     public function verifyInternal(
         FileSigned $fileSigned,
@@ -106,6 +110,10 @@ class SignatureVerifier
         $keyValid = (bool) ($signature->keyPair && $signature->keyPair->isValid());
         $success = $documentIntegrity && $signatureValid && $keyValid;
 
+        // Information de confiance du certificat (n'influence pas `success` : les clés
+        // créées avant l'AC interne ont un certificat auto-signé mais restent utilisables).
+        $certificateTrust = $this->certificateTrust($signature->keyPair?->certificate_data);
+
         $verification = SignatureVerification::create([
             'signature_id' => $signature->id,
             'verifier_id' => $verifierId,
@@ -117,6 +125,7 @@ class SignatureVerifier
                 'document_integrity' => $documentIntegrity,
                 'signature_valid' => $signatureValid,
                 'key_valid' => $keyValid,
+                'certificate_trust' => $certificateTrust,
                 'format' => $signature->signature_format,
                 'algorithm' => $signature->algorithm_used,
             ],
@@ -139,13 +148,14 @@ class SignatureVerifier
             'document_integrity' => $documentIntegrity,
             'signature_valid' => $signatureValid,
             'key_valid' => $keyValid,
+            'certificate_trust' => $certificateTrust,
         ];
     }
 
     /**
      * Vérifie un document « externe » (inconnu du système) à partir d'un fichier de signature.
      *
-     * @return array{verification: SignatureVerification, success: bool, document_integrity: bool, signature_valid: bool, data: array, public_key: string}
+     * @return array{verification: SignatureVerification, success: bool, document_integrity: bool, signature_valid: bool, data: array, public_key: string, certificate_trust: string}
      */
     public function verifyExternal(
         UploadedFile $file,
@@ -174,6 +184,7 @@ class SignatureVerifier
             $signatureValid = $cmsResult['valid'];
             $data['signer'] ??= $this->certificateCommonName($cmsResult['signers'][0] ?? null);
         } else {
+            $cmsResult = null;
             $publicKey = $this->externalPublicKey($data);
 
             if ($publicKey) {
@@ -188,6 +199,8 @@ class SignatureVerifier
         if (! $publicKey) {
             throw new RuntimeException($this->text(isset($data['cms']) ? 'invalid_format' : 'no_public_key', $locale));
         }
+
+        $certificateTrust = $this->certificateTrust($cmsResult['signers'][0] ?? null);
 
         $fileHash = hash_file('sha256', $file->getRealPath());
         $documentIntegrity = isset($data['file_hash']) ? hash_equals((string) $data['file_hash'], $fileHash) : true;
@@ -204,6 +217,7 @@ class SignatureVerifier
                 'signature_valid' => $signatureValid,
                 'document_integrity' => $documentIntegrity,
                 'format' => $data['format'] ?? 'unknown',
+                'certificate_trust' => $certificateTrust,
                 'external' => true,
             ],
             'signature_timestamp' => $data['timestamp'] ?? null,
@@ -224,6 +238,7 @@ class SignatureVerifier
             'signature_valid' => $signatureValid,
             'data' => $data,
             'public_key' => $publicKey,
+            'certificate_trust' => $certificateTrust,
         ];
     }
 
@@ -311,6 +326,15 @@ class SignatureVerifier
     public function formattedFingerprint(string $publicKey): string
     {
         return implode(':', str_split(strtoupper($this->fingerprint($publicKey)), 2));
+    }
+
+    /**
+     * Statut de confiance d'un certificat vis-à-vis de l'AC interne :
+     * trusted | self_signed | untrusted | expired | revoked | invalid | unknown (pas de certificat).
+     */
+    public function certificateTrust(?string $certificatePem): string
+    {
+        return $certificatePem ? $this->authority->validateChain($certificatePem)['status'] : 'unknown';
     }
 
     /** CMS valide ET signé par la clé enregistrée (le certificat embarqué ne suffit pas). */

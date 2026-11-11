@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Keys;
 
 use App\Http\Controllers\Controller;
 use App\Models\KeyPair;
+use App\Services\Crypto\CertificateAuthority;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -61,11 +62,11 @@ class KeyController extends Controller
             $validated['algorithm'],
             $validated['key_size'] ?? 2048
         );
-        // en principe si l'utilisateur ne fournie pas le certificat on cree mais ce n'est pas encore gerer
+        // Certificat X.509 émis par l'autorité de certification interne (créée au besoin).
         $certData = $this->generateCertificate(
             $keyPair['private_key'],
             $validated['key_name'],
-            $validated['valid_days'] ?? 30
+            (int) ($validated['valid_days'] ?? config('cryptor.certificate.default_days'))
         );
 
         $certificate = $certData['certificate'];
@@ -74,11 +75,9 @@ class KeyController extends Controller
         // Générer un identifiant unique pour la clé
         $keyIdentifier = Str::uuid()->toString();
 
-        // Déterminer les dates de validité
-        $validFrom = Carbon::now();
-        $validTo = isset($validated['valid_days'])
-            ? Carbon::now()->addDays((int) $validated['valid_days'])
-            : null;
+        // La validité de la clé est celle de son certificat.
+        $validFrom = $certData['valid_from'];
+        $validTo = $certData['valid_to'];
 
         // Si set_as_default est true, enlever le default des autres clés
         if ($validated['set_as_default'] ?? false) {
@@ -164,61 +163,11 @@ class KeyController extends Controller
         return implode(':', str_split(substr($hash, 0, 16), 2));
     }
 
-    private function generateCertificate(string $privateKeyPem, string $commonName, int $validDays = 30): array
+    private function generateCertificate(string $privateKeyPem, string $commonName, int $validDays): array
     {
+        $ca = app(CertificateAuthority::class);
 
-        // DN (Distinguished Name)
-        $dn = [
-            'countryName' => 'MA',
-            'stateOrProvinceName' => 'Souss-Massa',
-            'localityName' => 'Taroudant',
-            'organizationName' => 'CRYPTOR',
-            'organizationalUnitName' => 'PKI Department',
-            'commonName' => $commonName,
-            'emailAddress' => Auth::user()->email ?? 'cryptor@gmail.com',
-        ];
-
-        // Charger la clé privée
-        $privateKey = openssl_pkey_get_private($privateKeyPem);
-
-        if (! $privateKey) {
-            throw new \Exception('Invalid private key provided.');
-        }
-
-        // Générer la CSR (Certificate Signing Request)
-        $csr = openssl_csr_new(
-            $dn,
-            $privateKey,
-            [
-                'digest_alg' => 'sha256',
-            ]
-        );
-
-        if (! $csr) {
-            throw new \Exception('Failed to generate CSR.');
-        }
-
-        // Auto-signature du certificat
-        $x509 = openssl_csr_sign(
-            $csr,
-            null,          // null = auto-signé
-            $privateKey,
-            $validDays
-        );
-
-        if (! $x509) {
-            throw new \Exception('Failed to sign certificate.');
-        }
-
-        // Exporter certificat en PEM
-        openssl_x509_export($x509, $certificatePem);
-
-        return [
-            'certificate' => $certificatePem,
-            'issuer' => 'CRYPTOR Internal CA',
-            'valid_from' => now(),
-            'valid_to' => now()->addDays($validDays),
-        ];
+        return $ca->issue($privateKeyPem, $ca->subjectFor($commonName, Auth::user()?->email), $validDays);
     }
 
     public function revoked()

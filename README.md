@@ -43,6 +43,7 @@ Tout se règle dans `.env` (copie de `.env.example`).
   `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, puis `php artisan migrate`.
 - **E-mails** : par défaut `MAIL_MAILER=log` (les e-mails de vérification et de réinitialisation sont écrits
   dans `storage/logs/laravel.log`). Configurez un vrai SMTP pour les envoyer.
+- **Autorité de certification** : stockée dans `storage/app/private/pki/`. Sauvegardez ce dossier avec `.env`.
 - **Proxy de confiance** : si l'application est derrière un reverse proxy, adaptez `bootstrap/app.php`.
 
 ### ⚠️ Sauvegardez `APP_KEY`
@@ -72,18 +73,33 @@ npm run build                 # build de production
 
 Pour signaler une vulnérabilité, utilisez l'onglet **Security** du dépôt GitHub (signalement privé).
 
-## Signatures
+## Infrastructure de clés (PKI)
 
-Les signatures sont des **CMS détachés (RFC 5652)** produits par OpenSSL, avec le certificat du signataire.
-Le fichier `.p7s` téléchargé se vérifie avec n'importe quel outil standard :
+CRYPTOR embarque sa propre **autorité de certification** (ECDSA P-384). Elle se crée toute seule au premier
+usage : rien à configurer. Elle signe le certificat X.509 de chaque clé générée.
+
+| Adresse | Contenu |
+|---|---|
+| `/pki/ca.crt` | certificat public de l'autorité |
+| `/pki/revocations.json` | certificats révoqués (numéros de série), liste signée par l'autorité |
+
+Les signatures sont des **CMS détachés (RFC 5652)** produits par OpenSSL, avec le certificat du signataire et
+celui de l'autorité. Un tiers peut donc valider **toute la chaîne** avec les outils standards :
 
 ```bash
-openssl cms -verify -inform DER -in document.p7s -content document.pdf -noverify -binary
+curl -O https://votre-instance/pki/ca.crt
+openssl cms -verify -inform DER -in document.p7s -content document.pdf -CAfile ca.crt -binary
 ```
+
+Commandes : `php artisan cryptor:ca-init` (affiche l'empreinte de l'autorité) et
+`php artisan cryptor:reissue-certificates` (ré-émet sous l'autorité les anciens certificats auto-signés,
+avec la même clé ; `--dry-run` pour simuler). Nom, organisation et pays se règlent dans `.env`
+(`CRYPTOR_CA_NAME`, `CRYPTOR_ORGANIZATION`, `CRYPTOR_COUNTRY`).
 
 ## Limites connues
 
-- Les certificats sont **auto-signés** : la chaîne de confiance n'est pas encore validée (`-noverify`).
+- Une seule autorité, sans renouvellement automatique (valide 10 ans) ; pas de CRL X.509 binaire : la liste
+  de révocation est un JSON signé.
 - Le format « PDF » est un CMS détaché du fichier, pas une signature PAdES incorporée au PDF.
 - L'horodatage est interne (pas d'autorité RFC 3161). Voir `CLAUDE.md` pour la feuille de route.
 
