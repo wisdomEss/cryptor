@@ -21,7 +21,6 @@ import {
     KeyRound,
     Smartphone,
     History,
-    QrCode,
 } from 'lucide-vue-next';
 import { ref, computed } from 'vue';
 import { route as ziggyRoute } from 'ziggy-js';
@@ -38,14 +37,6 @@ import {
     CardTitle,
     CardFooter,
 } from '@/components/ui/card';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -127,12 +118,7 @@ interface Verification {
     expected_hash: string;
     result: boolean;
     verification_type:
-        | 'hash'
-        | 'signature'
-        | 'certificate'
-        | 'timestamp'
-        | 'auto'
-        | 'manual';
+        'hash' | 'signature' | 'certificate' | 'timestamp' | 'auto' | 'manual';
     verification_details: any | null; // JSON field
     error_message: string | null;
     signature_timestamp: string | null;
@@ -357,14 +343,6 @@ const safeCertificateChain = computed(
 const safeTimestampAuthority = computed(
     () => props.verification.timestamp_authority_used || 'N/A',
 );
-
-// Générer le contenu pour le QR code
-const qrCodeContent = computed(() => {
-    if (safeToken.value) {
-        return route('verifications.public', safeToken.value);
-    }
-    return route('verifications.show', props.verification.id);
-});
 </script>
 
 <template>
@@ -406,44 +384,14 @@ const qrCodeContent = computed(() => {
                     </p>
                 </div>
                 <div class="flex gap-2">
-                    <Dialog>
-                        <DialogTrigger as-child>
-                            <Button variant="outline">
-                                <QrCode class="mr-2 h-4 w-4" />
-                                QR Code
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Verification QR Code</DialogTitle>
-                                <DialogDescription>
-                                    Scan this code to access the verification
-                                    result
-                                </DialogDescription>
-                            </DialogHeader>
-                            <div class="flex justify-center p-4">
-                                <div
-                                    class="rounded-lg bg-muted p-4 text-center"
-                                >
-                                    <QrCode
-                                        class="mx-auto h-48 w-48 text-primary"
-                                    />
-                                    <p
-                                        class="mt-2 max-w-[300px] text-xs break-all text-muted-foreground"
-                                    >
-                                        {{ qrCodeContent }}
-                                    </p>
-                                </div>
-                            </div>
-                        </DialogContent>
-                    </Dialog>
-
                     <Button
                         v-if="safeToken"
                         variant="outline"
                         @click="
                             copyToClipboard(
-                                route('verifications.public', safeToken),
+                                route('verifications.public', {
+                                    token: safeToken,
+                                }),
                             )
                         "
                     >
@@ -775,9 +723,7 @@ const qrCodeContent = computed(() => {
                                             safeSignature.keyPair
                                                 ?.algorithm_used
                                         }}
-                                        {{
-                                            safeSignature.keyPair?.key_size
-                                        }}
+                                        {{ safeSignature.keyPair?.key_size }}
                                         bits
                                     </div>
                                 </div>
@@ -805,7 +751,9 @@ const qrCodeContent = computed(() => {
                                     class="flex-1 overflow-auto text-xs break-all"
                                 >
                                     {{
-                                        route('verifications.public', safeToken)
+                                        route('verifications.public', {
+                                            token: safeToken,
+                                        })
                                     }}
                                 </code>
                                 <Button
@@ -813,10 +761,9 @@ const qrCodeContent = computed(() => {
                                     size="sm"
                                     @click="
                                         copyToClipboard(
-                                            route(
-                                                'verifications.public',
-                                                safeToken,
-                                            ),
+                                            route('verifications.public', {
+                                                token: safeToken,
+                                            }),
                                         )
                                     "
                                     class="shrink-0"
@@ -1039,8 +986,7 @@ const qrCodeContent = computed(() => {
                                 </div>
                                 <pre
                                     class="max-h-32 overflow-auto rounded bg-muted p-2 text-xs"
-                                    >{{ safeCertificateChain }}</pre
-                                >
+                                    >{{ safeCertificateChain }}</pre>
                             </div>
                         </CardContent>
                     </Card>

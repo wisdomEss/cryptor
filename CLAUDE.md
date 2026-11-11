@@ -153,3 +153,11 @@ Contrainte directrice : **tout le monde doit pouvoir cloner et utiliser le proje
 - Migration `2026_11_12_100000_mark_existing_users_as_verified` : les comptes existants (créés sans confirmation) sont marqués confirmés, sinon tout le monde serait bloqué au déploiement. Irréversible.
 - `php artisan cryptor:verify-user {email?} {--all}` : confirmation manuelle (essai local, dépannage).
 - Les tests qui créent des utilisateurs avec `User::factory()` obtiennent des comptes **confirmés** ; utiliser `->unverified()` pour tester l'inverse.
+
+### Principe : la vérification publique ne demande jamais de compte (2026-11-12)
+
+Quiconque reçoit un document doit pouvoir le vérifier **sans se connecter** : `/verifications/public`, `POST /api/public/verify`, `/pki/ca.crt`, `/pki/revocations.json` ne sont jamais derrière `auth` ni `verified` (testé : `test_public_features_stay_public`).
+- Lien de partage : `/verifications/public?token=<64 hex>` ; la page lit le token (`initialToken`, validé `^[a-f0-9]{64}$`) et lance la vérification à l'ouverture. Toujours générer ce lien avec `route('verifications.public', { token })` (objet, jamais le token « à plat » : Ziggy en ferait le **nom** du paramètre, `?<token>=`). L'ancienne forme reste acceptée en lecture.
+- Un document inconnu ou modifié est un **résultat normal** : HTTP 422, message clair (`unknown_document`), rien dans les logs d'erreur. Seules les erreurs inattendues renvoient 500.
+- Rejouer un token ne modifie jamais l'enregistrement d'origine (IP et navigateur du vérificateur initial) : le journal d'audit reste intact.
+- Le « QR code » de `verifications/Show.vue` n'était qu'une icône : supprimé. Si un vrai QR code est voulu, ajouter une bibliothèque (`qrcode`) et y encoder le lien de partage public.

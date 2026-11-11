@@ -7,6 +7,7 @@ use App\Models\KeyPair;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
 use App\Models\User;
+use App\Services\Verification\SignatureVerifier;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -67,12 +68,18 @@ class ErrorDisclosureTest extends TestCase
         Log::shouldHaveReceived('error')->withArgs(fn ($message, $context = []) => str_contains($message, 'Public verification by upload failed') && isset($context['exception']));
     }
 
-    public function test_deliberate_public_errors_stay_readable(): void
+    public function test_deliberate_public_errors_stay_readable_and_are_not_server_errors(): void
     {
+        Log::spy();
+
         $this->postJson(route('api.public.verify'), [
             'file' => UploadedFile::fake()->createWithContent('inconnu.txt', 'document jamais signé'),
-        ])->assertStatus(500)
-            ->assertJsonPath('message', 'Erreur lors de la vérification : Un fichier de signature est requis pour vérifier un document externe.');
+        ])->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', app(SignatureVerifier::class)->text('unknown_document', 'fr'));
+
+        // Un résultat attendu n'est pas une erreur : rien dans les logs d'erreur.
+        Log::shouldNotHaveReceived('error');
     }
 
     public function test_authenticated_verification_hides_internal_errors(): void

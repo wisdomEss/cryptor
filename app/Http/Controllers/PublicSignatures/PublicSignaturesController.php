@@ -20,9 +20,29 @@ class PublicSignaturesController extends Controller
     /**
      * Affiche la page de vérification publique
      */
-    public function index()
+    public function index(Request $request)
     {
-        return Inertia::render('publicVerifications/Index');
+        return Inertia::render('publicVerifications/Index', [
+            // Lien de partage : /verifications/public?token=... La page lance alors la vérification.
+            'initialToken' => $this->tokenFromQuery($request),
+        ]);
+    }
+
+    /**
+     * Token de partage présent dans l'URL, s'il a la forme attendue (64 caractères hexadécimaux).
+     * Accepte aussi l'ancienne forme erronée `?<token>=` que généraient les pages connectées.
+     */
+    private function tokenFromQuery(Request $request): ?string
+    {
+        $candidates = [$request->query('token'), ...array_map('strval', array_keys($request->query()))];
+
+        foreach ($candidates as $candidate) {
+            if (is_string($candidate) && preg_match('/^[a-f0-9]{64}$/', $candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -114,13 +134,7 @@ class PublicSignaturesController extends Controller
                 ];
             }
 
-            $duration = round((microtime(true) - $startTime) * 1000);
-
-            $verification->update([
-                'verification_duration_ms' => $duration,
-                'verifier_ip' => $request->ip(),
-                'verifier_user_agent' => $request->userAgent(),
-            ]);
+            // Le rejeu d'un token ne modifie pas l'enregistrement d'origine (IP et navigateur du vérificateur initial).
 
             return response()->json([
                 'success' => $signature->is_valid && $verification->result,
@@ -179,11 +193,19 @@ class PublicSignaturesController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
 
-            \Log::error('Public verification by upload failed', ['exception' => $e]);
+            // Résultat attendu (document inconnu ou modifié, signature illisible...) : ce n'est pas
+            // une panne. Seules les erreurs inattendues sont journalisées et renvoient un 500.
+            $expected = $e instanceof UserFacingException;
+
+            if (! $expected) {
+                \Log::error('Public verification by upload failed', ['exception' => $e]);
+            }
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la vérification : '.UserFacingException::safeMessage($e, UserFacingException::GENERIC_FR),
+                'message' => $expected
+                    ? $e->getMessage()
+                    : 'Erreur lors de la vérification : '.UserFacingException::GENERIC_FR,
                 'details' => [
                     'signature_valid' => false,
                     'document_integrity' => false,
@@ -191,9 +213,9 @@ class PublicSignaturesController extends Controller
                     'signed_at' => null,
                     'algorithm' => 'Inconnu',
                     'fingerprint' => '',
-                    'warning' => 'Le document n\'a pas pu être vérifié.',
+                    'warning' => $expected ? 'Aucune signature n\'a pu être confirmée pour ce document.' : 'Le document n\'a pas pu être vérifié.',
                 ],
-            ], 500);
+            ], $expected ? 422 : 500);
         }
     }
 

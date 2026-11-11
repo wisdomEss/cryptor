@@ -794,10 +794,9 @@ const formatDate = (date: string) => {
                                     class="flex-1 overflow-auto rounded bg-background p-2 text-xs"
                                 >
                                     {{
-                                        route(
-                                            'verifications.public',
-                                            verificationResult.token,
-                                        )
+                                        route('verifications.public', {
+                                            token: verificationResult.token,
+                                        })
                                     }}
                                 </code>
                                 <Button
@@ -805,10 +804,9 @@ const formatDate = (date: string) => {
                                     size="sm"
                                     @click="
                                         copyToClipboard(
-                                            route(
-                                                'verifications.public',
-                                                verificationResult.token,
-                                            ),
+                                            route('verifications.public', {
+                                                token: verificationResult.token,
+                                            }),
                                         )
                                     "
                                 >

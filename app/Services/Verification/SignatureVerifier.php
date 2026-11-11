@@ -37,7 +37,7 @@ class SignatureVerifier
             'invalid' => 'The signature is invalid or has been tampered with.',
             'failed' => 'Verification failed.',
             'no_signature' => 'No signature found for this document.',
-            'signature_file_required' => 'Signature file is required for external document verification.',
+            'unknown_document' => 'This document is not recognised: it was not signed on this platform, or it has been modified since it was signed. To verify an external signature, attach its signature file (.p7s).',
             'invalid_format' => 'Invalid signature format.',
             'no_public_key' => 'No public key found in the signature.',
             'external_valid' => 'External signature is valid',
@@ -50,7 +50,7 @@ class SignatureVerifier
             'invalid' => 'La signature est invalide ou a été altérée.',
             'failed' => 'La vérification a échoué.',
             'no_signature' => 'Aucune signature trouvée pour ce document.',
-            'signature_file_required' => 'Un fichier de signature est requis pour vérifier un document externe.',
+            'unknown_document' => 'Ce document n\'est pas reconnu : il n\'a pas été signé sur cette plateforme, ou il a été modifié depuis sa signature. Pour vérifier une signature externe, joignez son fichier (.p7s).',
             'invalid_format' => 'Format de signature invalide.',
             'no_public_key' => 'Aucune clé publique trouvée dans la signature.',
             'external_valid' => 'La signature externe est valide',
@@ -173,7 +173,7 @@ class SignatureVerifier
         string $locale = 'en',
     ): array {
         if (! $signatureFile) {
-            throw new UserFacingException($this->text('signature_file_required', $locale));
+            throw new UserFacingException($this->text('unknown_document', $locale));
         }
 
         $data = $this->parseExternalSignature((string) file_get_contents($signatureFile->getRealPath()));

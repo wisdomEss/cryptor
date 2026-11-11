@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\KeyPair;
 use App\Models\Signature;
+use App\Models\SignatureVerification;
 use App\Models\User;
 use App\Services\Crypto\CmsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -79,9 +80,13 @@ class PublicVerificationTest extends TestCase
     {
         $this->signDocument('contenu confidentiel');
 
-        $this->postJson(route('api.public.verify'), [
+        // Résultat normal (et non une panne) : message clair pour le destinataire, pas d'erreur 500.
+        $response = $this->postJson(route('api.public.verify'), [
             'file' => UploadedFile::fake()->createWithContent('contrat.txt', 'contenu FALSIFIE'),
-        ])->assertStatus(500)->assertJsonPath('success', false);
+        ])->assertStatus(422)->assertJsonPath('success', false)->assertJsonPath('details.signature_valid', false);
+
+        $this->assertStringContainsString('modifié depuis sa signature', $response->json('message'));
+        $this->assertStringNotContainsString('Erreur', $response->json('message'));
     }
 
     public function test_external_signature_with_public_key_is_verified(): void
@@ -217,5 +222,87 @@ class PublicVerificationTest extends TestCase
             'rsa 2048' => [['algorithm' => 'rsa', 'key_size' => 2048]],
             'ecdsa p-256' => [['algorithm' => 'ecdsa']],
         ];
+    }
+
+    // ------------------------------------------------- lien de partage, sans compte
+
+    public function test_a_share_link_opens_the_public_page_with_the_token_for_a_visitor_without_account(): void
+    {
+        $token = str_repeat('ab12', 16);
+
+        $this->assertGuest();
+        $this->get(route('verifications.public', ['token' => $token]))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->component('publicVerifications/Index')
+                ->where('initialToken', $token));
+    }
+
+    public function test_the_page_without_a_token_has_nothing_to_verify(): void
+    {
+        $this->get(route('verifications.public'))
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('initialToken', null));
+    }
+
+    public function test_malformed_tokens_are_never_passed_to_the_page(): void
+    {
+        foreach (['court', str_repeat('g', 64), str_repeat('a', 63), str_repeat('A', 64), '<script>alert(1)</script>', str_repeat('a', 65)] as $bad) {
+            $this->get(route('verifications.public', ['token' => $bad]))
+                ->assertOk()
+                ->assertInertia(fn ($page) => $page->where('initialToken', null));
+        }
+
+        // Tableau au lieu d'une chaîne : ignoré sans erreur.
+        $this->get('/verifications/public?token[]=x')->assertOk();
+    }
+
+    public function test_the_old_malformed_link_format_still_works(): void
+    {
+        // Les pages connectées généraient autrefois /verifications/public?<token>=
+        $token = str_repeat('cd34', 16);
+
+        $this->get('/verifications/public?'.$token.'=')
+            ->assertOk()
+            ->assertInertia(fn ($page) => $page->where('initialToken', $token));
+    }
+
+    public function test_a_visitor_can_verify_from_a_shared_link_end_to_end(): void
+    {
+        $this->signDocument('contrat à partager');
+        $token = $this->postJson(route('api.public.verify'), [
+            'file' => UploadedFile::fake()->createWithContent('contrat.txt', 'contrat à partager'),
+        ])->json('token');
+
+        // Le destinataire n'a pas de compte : il ouvre le lien, la page donne le token, l'API répond.
+        $this->assertGuest();
+        $this->get(route('verifications.public', ['token' => $token]))->assertInertia(fn ($page) => $page->where('initialToken', $token));
+
+        $this->postJson(route('api.public.verify'), ['token' => $token])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('details.file_name', 'contrat.txt');
+    }
+
+    public function test_replaying_a_token_does_not_rewrite_the_original_audit_record(): void
+    {
+        $this->signDocument('contenu');
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])
+            ->withHeader('User-Agent', 'VerificateurOrigine')
+            ->postJson(route('api.public.verify'), ['file' => UploadedFile::fake()->createWithContent('a.txt', 'contenu')]);
+
+        $verification = SignatureVerification::whereNotNull('verification_token')->latest('id')->firstOrFail();
+        $this->assertSame('198.51.100.7', $verification->verifier_ip);
+
+        // Un inconnu rejoue le token depuis une autre adresse.
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.99'])
+            ->withHeader('User-Agent', 'Curieux')
+            ->postJson(route('api.public.verify'), ['token' => $verification->verification_token])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $fresh = $verification->fresh();
+        $this->assertSame('198.51.100.7', $fresh->verifier_ip);
+        $this->assertSame('VerificateurOrigine', $fresh->verifier_user_agent);
     }
 }

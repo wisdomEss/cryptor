@@ -19,9 +19,11 @@ import {
     Menu,
     X,
 } from 'lucide-vue-next';
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { route as ziggyRoute } from 'ziggy-js';
 import type { Config } from 'ziggy-js';
+
+const props = defineProps<{ initialToken?: string | null }>();
 
 const page = usePage();
 const ziggy = page.props.ziggy as Config;
@@ -269,6 +271,15 @@ const verifyByUpload = () => {
             isVerifying.value = false;
         });
 };
+
+// Lien de partage (?token=...) : la vérification se lance dès l'ouverture, sans compte ni saisie.
+onMounted(() => {
+    if (props.initialToken) {
+        verificationMethod.value = 'token';
+        verificationToken.value = props.initialToken;
+        verifyByToken();
+    }
+});
 
 const resetVerification = () => {
     selectedFile.value = null;
