@@ -86,3 +86,10 @@ La suite (pint, eslint, vue-tsc, `php artisan test`, `npm run build`) est entiè
 - La gestion des clés et signatures reste entièrement dans les contrôleurs (pas de services/policies) ; l'autorisation est un simple `where('user_id', auth()->id())` partout.
 - `keys/Edit.vue` et `keys/Revoke.vue` étaient des pages vides (« Page en construction ») ; elles ont été implémentées mais restent minimales.
 - Pas de vraie bibliothèque PAdES/CAdES : les « signatures PDF/CMS » sont une structure JSON maison, pas un format standard vérifiable par des outils tiers.
+
+### Dépendances / sécurité (2026-11-11)
+
+- `composer audit` et `npm audit` sont à 0 vulnérabilité ; `.github/dependabot.yml` surveille composer, npm et GitHub Actions chaque lundi (mises à jour minor/patch groupées).
+- `zod` et `@vee-validate/zod` ont été supprimés (jamais utilisés) ; seul `vee-validate` reste.
+- `package.json` contient un override `@typescript-eslint/typescript-estree.minimatch ^11.0.1` (correctif DoS) : à retirer quand `typescript-eslint` publiera une version corrigée.
+- Laravel reste en 12.x ; les changements de version majeure (Laravel 13, PHPUnit 13, Inertia 3, vue-tsc, etc.) sont à traiter à part.
