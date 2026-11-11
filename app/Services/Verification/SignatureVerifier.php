@@ -2,6 +2,7 @@
 
 namespace App\Services\Verification;
 
+use App\Exceptions\UserFacingException;
 use App\Models\FileSigned;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
@@ -11,7 +12,6 @@ use App\Services\Crypto\TimestampAuthority;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
-use RuntimeException;
 
 /**
  * Logique de vérification des signatures, partagée par la vérification
@@ -103,7 +103,7 @@ class SignatureVerifier
             ->first();
 
         if (! $signature) {
-            throw new RuntimeException($this->text('no_signature', $locale));
+            throw new UserFacingException($this->text('no_signature', $locale));
         }
 
         $currentHash = hash_file('sha256', $file->getRealPath());
@@ -173,13 +173,13 @@ class SignatureVerifier
         string $locale = 'en',
     ): array {
         if (! $signatureFile) {
-            throw new RuntimeException($this->text('signature_file_required', $locale));
+            throw new UserFacingException($this->text('signature_file_required', $locale));
         }
 
         $data = $this->parseExternalSignature((string) file_get_contents($signatureFile->getRealPath()));
 
         if (! $data || ! isset($data['signature'])) {
-            throw new RuntimeException($this->text('invalid_format', $locale));
+            throw new UserFacingException($this->text('invalid_format', $locale));
         }
 
         if (isset($data['cms'])) {
@@ -202,7 +202,7 @@ class SignatureVerifier
         }
 
         if (! $publicKey) {
-            throw new RuntimeException($this->text(isset($data['cms']) ? 'invalid_format' : 'no_public_key', $locale));
+            throw new UserFacingException($this->text(isset($data['cms']) ? 'invalid_format' : 'no_public_key', $locale));
         }
 
         $certificateTrust = $this->certificateTrust($cmsResult['signers'][0] ?? null);

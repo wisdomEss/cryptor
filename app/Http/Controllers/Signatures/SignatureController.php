@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Signatures;
 
+use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
 use App\Models\FileSigned;
 use App\Models\KeyPair;
@@ -161,8 +162,9 @@ class SignatureController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            \Log::error('Signature validate failed', ['exception' => $e, 'signature_id' => $id]);
 
-            return back()->withErrors(['error' => 'Failed to validate signature: '.$e->getMessage()]);
+            return back()->withErrors(['error' => 'Failed to validate signature.']);
         }
     }
 
@@ -220,8 +222,9 @@ class SignatureController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            \Log::error('Signature revoke failed', ['exception' => $e, 'signature_id' => $id]);
 
-            return back()->withErrors(['error' => 'Failed to revoke signature: '.$e->getMessage()]);
+            return back()->withErrors(['error' => 'Failed to revoke signature.']);
         }
     }
 
@@ -286,9 +289,10 @@ class SignatureController extends Controller
                 ->with('success', 'Signature deleted successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
+            \Log::error('Signature delete failed', ['exception' => $e, 'signature_id' => $id]);
 
             return back()->withErrors([
-                'error' => 'Failed to delete signature: '.$e->getMessage(),
+                'error' => 'Failed to delete signature.',
             ]);
         }
     }
@@ -481,12 +485,12 @@ class SignatureController extends Controller
 
             // Vérification approfondie de la validité de la clé
             if (! $keyPair->isValid()) {
-                throw new \Exception('The selected key is not valid or has expired.');
+                throw new UserFacingException('The selected key is not valid or has expired.');
             }
 
             // Vérifier que la clé privée est disponible
             if (empty($keyPair->private_key)) {
-                throw new \Exception('The private key is not available.');
+                throw new UserFacingException('The private key is not available.');
             }
 
             // Upload et stockage sécurisé du fichier
@@ -502,7 +506,7 @@ class SignatureController extends Controller
             $filePath = $file->storeAs($userDir, $fileName, 'local');
 
             if (! $filePath) {
-                throw new \Exception('Failed to upload file.');
+                throw new UserFacingException('Failed to upload file.');
             }
 
             // Calculer plusieurs hash pour plus de sécurité
@@ -546,7 +550,7 @@ class SignatureController extends Controller
             $privateKey = $keyPair->private_key;
 
             if (empty($privateKey)) {
-                throw new \Exception('Failed to decrypt private key.');
+                throw new UserFacingException('Failed to decrypt private key.');
             }
 
             // Générer la signature selon le format choisi
@@ -624,7 +628,7 @@ class SignatureController extends Controller
             ]);
 
             return back()->withErrors([
-                'error' => 'Failed to sign document: '.$e->getMessage(),
+                'error' => 'Failed to sign document: '.UserFacingException::safeMessage($e),
             ]);
         }
     }
@@ -638,7 +642,7 @@ class SignatureController extends Controller
     private function generateSignature(string $filePath, string $privateKey, ?string $certificate): string
     {
         if (empty($certificate)) {
-            throw new \Exception('Signature generation failed: the selected key has no certificate.');
+            throw new UserFacingException('Signature generation failed: the selected key has no certificate.');
         }
 
         try {
@@ -648,7 +652,10 @@ class SignatureController extends Controller
 
             return $this->cms->sign($filePath, $certificate, $privateKey, $caPath);
         } catch (\Exception $e) {
-            throw new \Exception('Signature generation failed: '.$e->getMessage());
+            // Le détail (erreurs OpenSSL) reste dans les logs, pas à l'écran.
+            \Log::error('CMS signature generation failed', ['exception' => $e]);
+
+            throw new UserFacingException('Signature generation failed.');
         }
     }
 

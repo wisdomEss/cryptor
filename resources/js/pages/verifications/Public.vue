@@ -1,3 +1,0 @@
-<template>
-    public hello
-</template>

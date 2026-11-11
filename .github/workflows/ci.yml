@@ -87,3 +87,78 @@ jobs:
           path: coverage.xml
           retention-days: 7
           if-no-files-found: ignore
+
+  # Les tests principaux tournent sur SQLite (rapide). La production utilise MySQL : ce job rejoue
+  # les migrations et toute la suite sur un vrai MySQL 8 pour détecter les écarts de comportement.
+  test-mysql:
+    name: test (MySQL 8)
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: secret
+          MYSQL_DATABASE: cryptor_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -uroot -psecret"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, dom, fileinfo, pdo_mysql, openssl
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Copy .env
+        run: cp .env.example .env
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction
+
+      - name: Generate app key
+        run: php artisan key:generate
+
+      - name: Install NPM dependencies
+        run: npm ci
+
+      - name: Generate Wayfinder routes/actions
+        run: php artisan wayfinder:generate --with-form
+
+      # Les pages Inertia lisent public/build/manifest.json.
+      - name: Build assets
+        run: npm run build
+
+      - name: Run migrations on MySQL
+        run: php artisan migrate --force
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: cryptor_test
+          DB_USERNAME: root
+          DB_PASSWORD: secret
+
+      - name: Run PHP test suite on MySQL
+        run: vendor/bin/phpunit
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: cryptor_test
+          DB_USERNAME: root
+          DB_PASSWORD: secret
+

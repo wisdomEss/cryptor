@@ -125,6 +125,22 @@ vérification. Si l'autorité est injoignable, la signature est quand même cré
 - Le format « PDF » est un CMS détaché du fichier, pas une signature PAdES incorporée au PDF.
 - Sans autorité d'horodatage configurée, l'horodatage est interne (heure du serveur). Voir `CLAUDE.md` pour la feuille de route.
 
+## Mise en production : checklist
+
+Dans le `.env` **du serveur** (jamais dans le dépôt) :
+
+| Variable | Valeur | Pourquoi |
+|---|---|---|
+| `APP_ENV` | `production` | active la CSP stricte et les mots de passe renforcés |
+| `APP_DEBUG` | `false` | sinon les erreurs affichent chemins, requêtes et variables |
+| `APP_URL` | `https://votre-domaine` | liens et cookies |
+| `SESSION_SECURE_COOKIE` | `true` | cookie de session envoyé uniquement en HTTPS |
+| `DB_CONNECTION` | `mysql` (+ `DB_*`) | testé en CI sur MySQL 8 |
+| `MAIL_*` | un vrai SMTP | sinon les e-mails de vérification restent dans les logs |
+
+Sauvegardez `.env` **et** `storage/app/private/` (documents, signatures, autorité de certification), et lancez
+artisan avec l'utilisateur du serveur web (`sudo -u www-data php artisan ...`), jamais en root.
+
 ## Déploiement
 
 `.github/workflows/deploy.yml` : tests (`ci.yml`) puis déploiement par un runner self-hosted

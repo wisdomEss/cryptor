@@ -356,24 +356,6 @@ class KeyController extends Controller
     /**
      * Télécharge la clé privée (nécessite mot de passe)
      */
-    public function downloadPrivate($id, Request $request)
-    {
-        $key = $this->ownedKey($id, 'view');
-
-        // Vérifier le mot de passe
-        $request->validate([
-            'password' => 'required|current_password',
-        ]);
-
-        $filename = Str::slug($key->key_name).'.key';
-        $headers = [
-            'Content-Type' => 'application/x-pem-file',
-            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
-        ];
-
-        return response($key->private_key, 200, $headers);
-    }
-
     /**
      * Révoque une clé
      */

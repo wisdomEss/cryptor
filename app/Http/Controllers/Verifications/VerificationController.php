@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Verifications;
 
+use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
@@ -150,13 +151,13 @@ class VerificationController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
 
-            \Log::error('Verification failed: '.$e->getMessage());
+            \Log::error('Verification failed', ['exception' => $e]);
 
             return Inertia::render('verifications/Create', [
                 'recentSignatures' => $this->getRecentSignatures(),
                 'verificationResult' => [
                     'success' => false,
-                    'message' => 'Verification failed: '.$e->getMessage(),
+                    'message' => 'Verification failed: '.UserFacingException::safeMessage($e),
                     'details' => [],
                 ],
             ]);
@@ -233,20 +234,6 @@ class VerificationController extends Controller
                 'signer_name' => $signature->signer->name,
                 'signed_at' => $signature->signed_at->diffForHumans(),
             ]);
-    }
-
-    /**
-     * Route pour la vérification publique
-     */
-    public function publicVerify($token)
-    {
-        $verification = SignatureVerification::where('verification_token', $token)
-            ->with(['signature.file', 'signature.signer', 'signature.keyPair'])
-            ->firstOrFail();
-
-        return inertia('verifications/Public', [
-            'verification' => $verification,
-        ]);
     }
 
     /**

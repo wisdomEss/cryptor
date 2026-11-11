@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\PublicSignatures;
 
+use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
 use App\Models\SignatureVerification;
 use App\Services\Verification\SignatureVerifier;
@@ -129,11 +130,11 @@ class PublicSignaturesController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Public verification by token failed: '.$e->getMessage());
+            \Log::error('Public verification by token failed', ['exception' => $e]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la vérification: '.$e->getMessage(),
+                'message' => 'Erreur lors de la vérification : '.UserFacingException::safeMessage($e, UserFacingException::GENERIC_FR),
                 'details' => [
                     'signature_valid' => false,
                     'document_integrity' => false,
@@ -177,11 +178,11 @@ class PublicSignaturesController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
 
-            \Log::error('Public verification by upload failed: '.$e->getMessage());
+            \Log::error('Public verification by upload failed', ['exception' => $e]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la vérification: '.$e->getMessage(),
+                'message' => 'Erreur lors de la vérification : '.UserFacingException::safeMessage($e, UserFacingException::GENERIC_FR),
                 'details' => [
                     'signature_valid' => false,
                     'document_integrity' => false,
