@@ -27,7 +27,27 @@ npm run build
 
 ## Architecture métier
 
-Les contrôleurs sont groupés par domaine dans `app/Http/Controllers/<Domaine>/` ; la logique de clés/signatures est dans les contrôleurs, mais **la vérification est dans `app/Services/Verification/SignatureVerifier.php`** (pas de FormRequest pour le métier).
+Les contrôleurs (`app/Http/Controllers/<Domaine>/`) sont **minces** : ils valident la requête, autorisent (Policies), appellent un service et répondent. Toute la logique métier est dans `app/Services/` (pas de FormRequest pour le métier ; validation inline dans le contrôleur) :
+
+| Service | Rôle |
+|---|---|
+| `Keys/KeyManager` | cycle de vie d'une clé : création (+ certificat), modification, défaut, activation, révocation, suppression, et les règles qui les encadrent |
+| `Keys/KeyGenerator` | génération RSA 2048/4096 et ECDSA P-256 |
+| `Keys/KeyBackupService` | export/import PKCS#12 (.p12) |
+| `Keys/KeyFingerprint` | **seule** définition de l'empreinte (SHA-256 du DER SPKI) : `of()` complète, `short()` = son préfixe de 8 octets pour les listes |
+| `Keys/SshKeyExporter` | export `authorized_keys` (RSA et ECDSA P-256) |
+| `Signing/DocumentSigner` | signer : stockage, empreintes, CMS, horodatage, puis enregistrement |
+| `Signing/SignatureManager` | valider / révoquer / supprimer une signature |
+| `Verification/SignatureVerifier` | vérification (interne, externe, publique) |
+| `Crypto/CertificateAuthority`, `CmsService`, `TimestampAuthority` | primitives PKI |
+
+Les données envoyées aux pages Inertia sont mises en forme par `app/Http/Resources/*` (`->resolve()`), pas dans les contrôleurs. `App\Support\ClientContext` transporte IP et user-agent vers les services (pas d'objet `Request` dans les services).
+
+Règles de conception à respecter :
+- Un service ne lit pas `auth()` : l'utilisateur est un paramètre.
+- Une règle métier violée lève `UserFacingException` (message affichable ; `field` si elle concerne un champ de formulaire). Toute autre exception est inattendue : journalisée, jamais montrée.
+- `DocumentSigner` : tout ce qui est lent ou externe (signature, TSA) se fait **avant** la transaction SQL ; les fichiers écrits sont supprimés si une étape échoue. `SignatureManager::delete` n'efface les fichiers **qu'après** le commit.
+- `FileSigned` est en suppression logique (`SoftDeletes`) : la ligne reste, le fichier disparaît du disque.
 
 | Domaine | Contrôleur | Pages Inertia |
 |---|---|---|
@@ -84,7 +104,8 @@ La suite (pint, eslint, vue-tsc, `php artisan test`, `npm run build`) est entiè
 
 ### Dette restante / limites connues
 
-- La gestion des clés et signatures (création, signature) reste dans les contrôleurs ; seuls la vérification (service) et l'autorisation (Policies) ont été extraits.
+- La signature d'un même contenu par le même utilisateur crée un nouveau `FileSigned` à chaque fois (pas de réutilisation) : `findSignedFile` retrouve alors la première ligne portant cette empreinte.
+- La « signature visuelle » d'un PDF n'enregistre que des métadonnées de mise en page (`visual_signature_data`) : le PDF n'est pas modifié.
 - `keys/Edit.vue` et `keys/Revoke.vue` étaient des pages vides (« Page en construction ») ; elles ont été implémentées mais restent minimales.
 - Pas de PAdES : le format `pdf` est un CMS détaché du fichier, **pas** une signature incorporée dans le PDF (il faudrait une bibliothèque PDF dédiée). Le CMS, lui, est standard et vérifiable avec `openssl cms -verify -inform DER -in x.p7s -content doc -noverify -binary`.
 - `CmsService::verify` utilise `OPENSSL_CMS_NOVERIFY` (signature + intégrité seulement) ; la confiance du certificat est évaluée à part par `CertificateAuthority::validateChain` (statut `certificate_trust`, **informatif** : il n'invalide pas une vérification, car les clés antérieures à l'AC ont un certificat auto-signé). En interne, le certificat embarqué doit en plus correspondre à la clé enregistrée.
@@ -113,3 +134,12 @@ Contrainte directrice : **tout le monde doit pouvoir cloner et utiliser le proje
 - **Erreurs** : `App\Exceptions\UserFacingException` = seule exception dont le message peut être montré à l'utilisateur (`UserFacingException::safeMessage`). Toute autre exception (SQL, OpenSSL...) est journalisée (`Log::error(..., ['exception' => $e])`) et remplacée par un message générique ; ne jamais concaténer `$e->getMessage()` dans une réponse. Testé dans `ErrorDisclosureTest`.
 - **MySQL** : la suite complète (et les 13 migrations) a été validée sur MySQL 8.0 ; la CI a un job `test (MySQL 8)` en plus du job SQLite. Un conteneur jetable suffit en local : `docker run -d -e MYSQL_ROOT_PASSWORD=secret -e MYSQL_DATABASE=cryptor_test -p 127.0.0.1:33061:3306 mysql:8.0` puis `DB_CONNECTION=mysql DB_HOST=127.0.0.1 DB_PORT=33061 DB_DATABASE=cryptor_test DB_USERNAME=root DB_PASSWORD=secret vendor/bin/phpunit`.
 - Code mort retiré : route `keys.download-private`, `VerificationController::publicVerify` + page `verifications/Public.vue`, `PlaceholderPattern.vue`, `laravel/sail`.
+
+### Refactoring services (2026-11-11)
+
+`KeyController` 630 → 274 lignes, `SignatureController` 805 → 228 ; 190 tests (SQLite et MySQL 8). Corrigé au passage :
+- **Export SSH invalide** : le module RSA n'était pas préfixé de `0x00` (mpint SSH), `ssh-keygen` refusait le fichier. Corrigé, étendu à ECDSA P-256, commentaire assaini (plus d'injection de ligne), validé par `ssh-keygen` dans les tests.
+- **Quatre calculs d'empreinte différents** (clé, signature, vérification, dashboard) → un seul (`KeyFingerprint`).
+- **Appel à l'autorité d'horodatage (jusqu'à 10 s) dans la transaction SQL** → déplacé avant.
+- **Fichiers orphelins** (document ou `.p7s` écrit puis transaction annulée) → nettoyés ; suppression de signature : fichiers effacés après le commit.
+- Nom de fichier stocké : extension nettoyée (`[A-Za-z0-9]`), plus de point final ; hachage SHA-256/512/MD5 en une seule lecture ; signature visuelle : émetteur réel du certificat au lieu de « Self-signed » ; `edit()` n'envoie plus le PEM du certificat au front.

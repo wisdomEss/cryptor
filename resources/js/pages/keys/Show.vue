@@ -305,7 +305,7 @@ const validityStatus = getValidityStatus();
                         </div>
                         <div class="mt-1 flex items-center gap-2">
                             <span
-                                class="font-mono text-sm text-muted-foreground"
+                                class="min-w-0 font-mono text-sm break-all text-muted-foreground"
                             >
                                 {{ keyData.fingerprint }}
                             </span>

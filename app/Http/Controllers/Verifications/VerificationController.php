@@ -6,6 +6,7 @@ use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
+use App\Services\Keys\KeyFingerprint;
 use App\Services\Verification\SignatureVerifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -186,7 +187,7 @@ class VerificationController extends Controller
                 'signer' => $signature->signer->name ?? 'Unknown',
                 'signed_at' => $signature->signed_at->toIso8601String(),
                 'algorithm' => $signature->algorithm_used,
-                'fingerprint' => $this->verifier->fingerprint($signature->keyPair->public_key ?? ''),
+                'fingerprint' => KeyFingerprint::short($signature->keyPair->public_key ?? ''),
             ],
             'id' => $r['verification']->id,
             'token' => $r['verification']->verification_token,

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\PublicSignatures;
 use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
 use App\Models\SignatureVerification;
+use App\Services\Keys\KeyFingerprint;
 use App\Services\Verification\SignatureVerifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -100,7 +101,7 @@ class PublicSignaturesController extends Controller
                 'signer' => $signature->signer->name ?? 'Inconnu',
                 'signed_at' => $signature->signed_at?->toIso8601String(),
                 'algorithm' => $signature->algorithm_used,
-                'fingerprint' => $this->verifier->formattedFingerprint($signature->keyPair->public_key ?? ''),
+                'fingerprint' => KeyFingerprint::short($signature->keyPair->public_key ?? ''),
                 'file_name' => $signature->file->original_file_name ?? 'Document inconnu',
                 'verification_date' => $verification->verified_at?->toIso8601String(),
             ];
@@ -219,7 +220,7 @@ class PublicSignaturesController extends Controller
                 'signer' => $signature->signer->name ?? 'Inconnu',
                 'signed_at' => $signature->signed_at?->toIso8601String(),
                 'algorithm' => $signature->algorithm_used,
-                'fingerprint' => $this->verifier->formattedFingerprint($signature->keyPair->public_key ?? ''),
+                'fingerprint' => KeyFingerprint::short($signature->keyPair->public_key ?? ''),
                 'file_name' => $fileSigned->original_file_name,
             ],
             'verification_id' => $r['verification']->id,
@@ -249,7 +250,7 @@ class PublicSignaturesController extends Controller
                 'signer' => $data['signer'] ?? 'Signataire externe',
                 'signed_at' => $data['timestamp'] ?? null,
                 'algorithm' => $data['algorithm'] ?? 'Inconnu',
-                'fingerprint' => $this->verifier->formattedFingerprint($r['public_key']),
+                'fingerprint' => KeyFingerprint::short($r['public_key']),
                 'warning' => 'Document externe - non enregistré dans notre système',
             ],
             'verification_id' => $r['verification']->id,

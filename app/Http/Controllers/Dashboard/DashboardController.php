@@ -7,6 +7,7 @@ use App\Models\FileSigned;
 use App\Models\KeyPair;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
+use App\Services\Keys\KeyFingerprint;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -109,7 +110,7 @@ class DashboardController extends Controller
                 'defaultKey' => $defaultKey ? [
                     'id' => $defaultKey->id,
                     'key_name' => $defaultKey->key_name,
-                    'fingerprint' => $this->generateFingerprint($defaultKey->public_key),
+                    'fingerprint' => KeyFingerprint::short($defaultKey->public_key),
                 ] : null,
                 'expiringKeys' => $expiringKeys,
 
@@ -145,14 +146,6 @@ class DashboardController extends Controller
     /**
      * Génère une empreinte à partir de la clé publique
      */
-    private function generateFingerprint($publicKey)
-    {
-        $key = preg_replace('/-----(BEGIN|END) (PUBLIC|PRIVATE) KEY-----/', '', $publicKey);
-        $key = preg_replace('/\s+/', '', $key);
-        $hash = hash('sha256', $key);
-
-        return implode(':', str_split(substr(strtoupper($hash), 0, 16), 2));
-    }
 
     /**
      * Regroupe une collection de dates par mois (format Y-m) et compte les

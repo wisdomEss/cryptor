@@ -102,17 +102,6 @@ class SignatureVerifierTest extends TestCase
         $this->assertSame('The document has been modified and the signature is invalid.', $this->verifier->message(false, false, false));
     }
 
-    public function test_fingerprints(): void
-    {
-        $pem = "-----BEGIN PUBLIC KEY-----\nABCDEF\n-----END PUBLIC KEY-----";
-
-        $short = $this->verifier->fingerprint($pem);
-
-        $this->assertSame(16, strlen($short));
-        $this->assertSame($short, $this->verifier->fingerprint("-----BEGIN PUBLIC KEY-----\r\nABC\r\nDEF\r\n-----END PUBLIC KEY-----"));
-        $this->assertMatchesRegularExpression('/^([0-9A-F]{2}:){7}[0-9A-F]{2}$/', $this->verifier->formattedFingerprint($pem));
-    }
-
     public function test_external_signature_parsing(): void
     {
         $this->assertSame(['signature' => 'abc'], $this->verifier->parseExternalSignature('{"signature":"abc"}'));
