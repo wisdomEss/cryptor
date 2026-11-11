@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\KeyPair;
 use App\Models\Signature;
+use App\Services\Crypto\CmsService;
 use App\Services\Verification\SignatureVerifier;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -117,5 +118,48 @@ class SignatureVerifierTest extends TestCase
         $this->assertSame(['signature' => 'abc'], $this->verifier->parseExternalSignature('{"signature":"abc"}'));
         $this->assertSame('raw', $this->verifier->parseExternalSignature("\x00\x01\x02binaire")['format']);
         $this->assertNull($this->verifier->parseExternalSignature('simple texte sans signature'));
+    }
+
+    private function cmsSignature(KeyPair $signingKey, string $content, KeyPair $registeredKey): Signature
+    {
+        $file = tempnam(sys_get_temp_dir(), 'doc');
+        file_put_contents($file, $content);
+        $cms = (new CmsService)->sign($file, $signingKey->certificate_data, $signingKey->private_key);
+        @unlink($file);
+
+        return Signature::factory()->create([
+            'key_pair_id' => $registeredKey->id,
+            'signature_value' => $cms,
+        ])->load('keyPair');
+    }
+
+    public function test_cms_signature_is_verified_against_the_registered_key(): void
+    {
+        $key = KeyPair::factory()->create();
+        $signature = $this->cmsSignature($key, 'bonjour', $key);
+
+        $this->assertTrue($this->verifier->verifySignature($signature, 'bonjour'));
+        $this->assertFalse($this->verifier->verifySignature($signature, 'bonjour modifié'));
+    }
+
+    public function test_cms_signed_by_another_certificate_is_rejected_even_if_cryptographically_valid(): void
+    {
+        $registered = KeyPair::factory()->create();
+        $attacker = KeyPair::factory()->create();
+
+        // Signature CMS parfaitement valide, mais faite avec la clé d'un tiers.
+        $signature = $this->cmsSignature($attacker, 'bonjour', $registered);
+
+        $this->assertFalse($this->verifier->verifySignature($signature, 'bonjour'));
+    }
+
+    public function test_external_cms_files_are_detected_in_pem_and_der(): void
+    {
+        $key = KeyPair::factory()->create();
+        $signature = $this->cmsSignature($key, 'bonjour', $key);
+        $cms = new CmsService;
+
+        $this->assertSame('CMS', $this->verifier->parseExternalSignature($signature->signature_value)['format']);
+        $this->assertSame('CMS', $this->verifier->parseExternalSignature($cms->pemToDer($signature->signature_value))['format']);
     }
 }

@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Models\KeyPair;
 use App\Models\Signature;
 use App\Models\User;
+use App\Services\Crypto\CmsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class PublicVerificationTest extends TestCase
@@ -141,5 +143,79 @@ class PublicVerificationTest extends TestCase
             'verifier_id' => $user->id,
             'is_public_verification' => false,
         ]);
+    }
+
+    private function externalCms(KeyPair $key, string $content, bool $der = true): string
+    {
+        $file = tempnam(sys_get_temp_dir(), 'doc');
+        file_put_contents($file, $content);
+        $cms = new CmsService;
+        $pem = $cms->sign($file, $key->certificate_data, $key->private_key);
+        @unlink($file);
+
+        return $der ? $cms->pemToDer($pem) : $pem;
+    }
+
+    public function test_external_cms_signature_is_verified_with_its_embedded_certificate(): void
+    {
+        $key = KeyPair::factory()->create();
+
+        foreach ([true, false] as $der) {
+            $this->postJson(route('api.public.verify'), [
+                'file' => UploadedFile::fake()->createWithContent('doc.txt', 'document CMS'),
+                'signature_file' => UploadedFile::fake()->createWithContent('doc.p7s', $this->externalCms($key, 'document CMS', $der)),
+            ])->assertOk()
+                ->assertJsonPath('success', true)
+                ->assertJsonPath('details.signer', 'Test Signer');
+        }
+    }
+
+    public function test_external_cms_signature_fails_when_the_document_was_modified(): void
+    {
+        $key = KeyPair::factory()->create();
+
+        $this->postJson(route('api.public.verify'), [
+            'file' => UploadedFile::fake()->createWithContent('doc.txt', 'document MODIFIE'),
+            'signature_file' => UploadedFile::fake()->createWithContent('doc.p7s', $this->externalCms($key, 'document CMS')),
+        ])->assertOk()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('details.signature_valid', false)
+            ->assertJsonPath('details.signer', 'Test Signer');
+    }
+
+    /** Chemin de production complet : clé générée par l'application, signature, vérification publique. */
+    #[DataProvider('generatedKeys')]
+    public function test_full_flow_with_keys_generated_by_the_application(array $keyParams): void
+    {
+        Storage::fake('local');
+
+        $user = User::factory()->create();
+        $this->actingAs($user)->post(route('keys.store'), ['key_name' => 'Clé test'] + $keyParams)
+            ->assertRedirect(route('keys.index'));
+
+        $key = KeyPair::firstOrFail();
+
+        $this->post(route('signatures.store'), [
+            'file' => UploadedFile::fake()->createWithContent('contrat.txt', 'accord signé'),
+            'key_pair_id' => $key->id,
+            'signature_format' => 'cms',
+            'expires_in_days' => 0,
+        ])->assertRedirect();
+
+        auth()->logout();
+
+        $this->postJson(route('api.public.verify'), [
+            'file' => UploadedFile::fake()->createWithContent('contrat.txt', 'accord signé'),
+        ])->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('details.signature_valid', true);
+    }
+
+    public static function generatedKeys(): array
+    {
+        return [
+            'rsa 2048' => [['algorithm' => 'rsa', 'key_size' => 2048]],
+            'ecdsa p-256' => [['algorithm' => 'ecdsa']],
+        ];
     }
 }

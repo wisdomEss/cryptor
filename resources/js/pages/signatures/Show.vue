@@ -176,20 +176,9 @@ const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
 };
 
-const downloadFile = (content: string, filename: string, type: string) => {
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-};
-
+// Fichier .p7s (CMS détaché en DER) servi par le backend.
 const downloadSignature = () => {
-    const content = props.signature.signature_value;
-    const filename = `signature_${props.signature.id}.p7s`;
-    downloadFile(content, filename, 'application/pkcs7-signature');
+    window.location.href = route('signatures.download', props.signature.id);
 };
 
 const downloadDocument = () => {

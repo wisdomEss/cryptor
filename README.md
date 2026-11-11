@@ -72,11 +72,20 @@ npm run build                 # build de production
 
 Pour signaler une vulnérabilité, utilisez l'onglet **Security** du dépôt GitHub (signalement privé).
 
+## Signatures
+
+Les signatures sont des **CMS détachés (RFC 5652)** produits par OpenSSL, avec le certificat du signataire.
+Le fichier `.p7s` téléchargé se vérifie avec n'importe quel outil standard :
+
+```bash
+openssl cms -verify -inform DER -in document.p7s -content document.pdf -noverify -binary
+```
+
 ## Limites connues
 
-- Les certificats sont **auto-signés** et les signatures « CMS/PAdES » sont, pour l'instant, une structure
-  JSON propre au projet (non vérifiable par des outils tiers). Voir `CLAUDE.md` pour l'état détaillé et
-  la feuille de route.
+- Les certificats sont **auto-signés** : la chaîne de confiance n'est pas encore validée (`-noverify`).
+- Le format « PDF » est un CMS détaché du fichier, pas une signature PAdES incorporée au PDF.
+- L'horodatage est interne (pas d'autorité RFC 3161). Voir `CLAUDE.md` pour la feuille de route.
 
 ## Déploiement
 

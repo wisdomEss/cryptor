@@ -86,4 +86,108 @@ class SignatureTest extends TestCase
         $response->assertRedirect(route('signatures.index'));
         $this->assertDatabaseMissing('signatures', ['id' => $signature->id]);
     }
+
+    public function test_signing_produces_a_standard_cms_and_a_der_p7s_file()
+    {
+        Storage::fake('local');
+
+        $user = User::factory()->create();
+        $key = KeyPair::factory()->for($user)->create();
+
+        $this->actingAs($user)->post(route('signatures.store'), [
+            'file' => UploadedFile::fake()->createWithContent('contrat.txt', 'texte signé'),
+            'key_pair_id' => $key->id,
+            'signature_format' => 'cms',
+            'expires_in_days' => 0,
+        ])->assertRedirect();
+
+        $signature = Signature::firstOrFail();
+
+        // En base : CMS PEM, plus de JSON maison.
+        $this->assertStringStartsWith('-----BEGIN CMS-----', $signature->signature_value);
+        $this->assertNull(json_decode($signature->signature_value, true));
+
+        // Fichier .p7s : CMS en DER, vérifiable par OpenSSL contre le document d'origine.
+        $der = Storage::disk('local')->get($signature->signature_file_path);
+        $this->assertSame("\x30", $der[0]);
+        $this->assertMatchesRegularExpression('/-'.$signature->id.'\.p7s$/', $signature->signature_file_path);
+
+        $contentFile = tempnam(sys_get_temp_dir(), 'doc');
+        $sigFile = tempnam(sys_get_temp_dir(), 'sig');
+        file_put_contents($contentFile, 'texte signé');
+        file_put_contents($sigFile, $der);
+
+        $this->assertTrue(openssl_cms_verify(
+            $contentFile,
+            OPENSSL_CMS_DETACHED | OPENSSL_CMS_NOVERIFY | OPENSSL_CMS_BINARY,
+            null, [], null, null, null, $sigFile, OPENSSL_ENCODING_DER
+        ));
+
+        @unlink($contentFile);
+        @unlink($sigFile);
+    }
+
+    public function test_pdf_format_also_produces_a_real_cms_signature()
+    {
+        Storage::fake('local');
+
+        $user = User::factory()->create();
+        $key = KeyPair::factory()->for($user)->create();
+
+        $this->actingAs($user)->post(route('signatures.store'), [
+            'file' => UploadedFile::fake()->createWithContent('rapport.pdf', '%PDF-1.4 faux pdf'),
+            'key_pair_id' => $key->id,
+            'signature_format' => 'pdf',
+            'include_visual' => true,
+            'expires_in_days' => 0,
+        ])->assertRedirect();
+
+        $signature = Signature::firstOrFail();
+
+        $this->assertSame('pdf', $signature->signature_format);
+        $this->assertStringStartsWith('-----BEGIN CMS-----', $signature->signature_value);
+        $this->assertNotNull($signature->signature_file_path);
+    }
+
+    public function test_signing_fails_cleanly_when_the_key_has_no_certificate()
+    {
+        Storage::fake('local');
+
+        $user = User::factory()->create();
+        $key = KeyPair::factory()->for($user)->create(['certificate_data' => null]);
+
+        $this->actingAs($user)->post(route('signatures.store'), [
+            'file' => UploadedFile::fake()->createWithContent('contrat.txt', 'texte'),
+            'key_pair_id' => $key->id,
+            'signature_format' => 'cms',
+            'expires_in_days' => 0,
+        ])->assertSessionHasErrors('error');
+
+        $this->assertSame(0, Signature::count());
+    }
+
+    public function test_detached_signature_download_returns_the_der_file_and_is_owner_only()
+    {
+        Storage::fake('local');
+
+        $user = User::factory()->create();
+        $key = KeyPair::factory()->for($user)->create();
+
+        $this->actingAs($user)->post(route('signatures.store'), [
+            'file' => UploadedFile::fake()->createWithContent('contrat.txt', 'texte'),
+            'key_pair_id' => $key->id,
+            'signature_format' => 'cms',
+            'expires_in_days' => 0,
+        ]);
+
+        $signature = Signature::firstOrFail();
+
+        $response = $this->get(route('signatures.download', $signature->id));
+        $response->assertOk();
+        $this->assertStringContainsString('pkcs7-signature', $response->headers->get('Content-Type'));
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('signatures.download', $signature->id))
+            ->assertNotFound();
+    }
 }

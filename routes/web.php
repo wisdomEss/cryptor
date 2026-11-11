@@ -110,6 +110,9 @@ Route::middleware(['auth'])->group(function () {
         ->name('signatures.revoke');
 
     // La validation réutilise la même logique que la mise à jour (update).
+    Route::get('/signatures/{signature}/download', [SignatureController::class, 'download'])
+        ->name('signatures.download');
+
     Route::patch('/signatures/{signature}/validate', [SignatureController::class, 'update'])
         ->name('signatures.validate');
 

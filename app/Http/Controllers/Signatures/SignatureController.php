@@ -7,14 +7,18 @@ use App\Models\FileSigned;
 use App\Models\KeyPair;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
+use App\Services\Crypto\CmsService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class SignatureController extends Controller
 {
+    public function __construct(private readonly CmsService $cms) {}
+
     public function show(Request $request, $id)
     {
         $signature = Signature::with([
@@ -222,6 +226,26 @@ class SignatureController extends Controller
     public function edit($id)
     {
         return redirect()->route('signatures.show', $id);
+    }
+
+    /**
+     * Télécharge la signature détachée (.p7s, CMS en DER).
+     * Les anciennes signatures (JSON historique) sont servies telles quelles.
+     */
+    public function download($id)
+    {
+        $signature = $this->ownedSignature($id, 'view');
+        $name = 'signature_'.$signature->id.'.p7s';
+        $headers = ['Content-Type' => 'application/pkcs7-signature'];
+
+        $path = $signature->signature_file_path;
+        if ($path && Storage::disk('local')->exists($path)) {
+            return Storage::disk('local')->download($path, $name, $headers);
+        }
+
+        return response((string) $signature->signature_value, 200, $headers + [
+            'Content-Disposition' => 'attachment; filename="'.$name.'"',
+        ]);
     }
 
     /**
@@ -520,14 +544,11 @@ class SignatureController extends Controller
             }
 
             // Générer la signature selon le format choisi
+            // Signature CMS détachée (RFC 5652) produite par OpenSSL, certificat inclus.
             $signatureValue = $this->generateSignature(
                 $file->getRealPath(),
                 $privateKey,
-                $keyPair->public_key,
-                $request->signature_format,
-                $fileSigned,
                 $keyPair->certificate_data,
-                $keyPair->algorithm_used,
             );
             // Préparer les données de signature visuelle si demandé
             $visualData = null;
@@ -556,10 +577,8 @@ class SignatureController extends Controller
                 'timestamp_token' => $this->generateTimestampToken(),
             ]);
 
-            // Générer et stocker la signature détachée si nécessaire
-            if ($request->signature_format === 'pkcs7' || $request->signature_format === 'cms') {
-                $this->storeDetachedSignature($signature, $signatureValue, $fileSigned);
-            }
+            // Stocker la signature détachée (.p7s, CMS encodé en DER)
+            $this->storeDetachedSignature($signature, $signatureValue, $fileSigned);
 
             // Mettre à jour le compteur de signatures
             $fileSigned->addSignatureCount();
@@ -605,96 +624,22 @@ class SignatureController extends Controller
     }
 
     /**
-     * Génère une signature numérique selon le format choisi
+     * Signe le fichier : CMS (RFC 5652) détaché, encodé en PEM.
+     *
+     * Les formats « cms » et « pdf » produisent le même conteneur : une vraie
+     * signature PAdES (incorporée dans le PDF) demanderait une bibliothèque PDF dédiée.
      */
-    private function generateSignature($filePath, $privateKey, $publicKey, $format, $fileSigned, $certificateData, $algorithmUsed = 'rsa')
+    private function generateSignature(string $filePath, string $privateKey, ?string $certificate): string
     {
+        if (empty($certificate)) {
+            throw new \Exception('Signature generation failed: the selected key has no certificate.');
+        }
+
         try {
-            $fileContent = file_get_contents($filePath);
-
-            switch ($format) {
-                case 'pdf':
-                    return $this->generatePadesSignature($filePath, $privateKey, $publicKey, $fileSigned, $algorithmUsed);
-
-                case 'cms':
-                    return $this->generateCmsSignature($fileContent, $privateKey, $publicKey, $fileSigned, $algorithmUsed);
-
-                default:
-                    throw new \Exception("Unsupported signature format: {$format}");
-            }
+            return $this->cms->sign($filePath, $certificate, $privateKey);
         } catch (\Exception $e) {
             throw new \Exception('Signature generation failed: '.$e->getMessage());
         }
-    }
-
-    /**
-     * Retourne l'identifiant OID/texte de l'algorithme de signature pour les
-     * métadonnées (CMS/PAdES), en fonction du type de clé utilisé.
-     */
-    private function signatureAlgorithmLabel(string $algorithmUsed): string
-    {
-        return match ($algorithmUsed) {
-            'ecdsa' => 'ecdsa-with-SHA256',
-            default => 'rsaEncryption',
-        };
-    }
-
-    /**
-     * Génère une signature CMS (Cryptographic Message Syntax)
-     */
-    private function generateCmsSignature($fileContent, $privateKey, $publicKey, $fileSigned, $algorithmUsed = 'rsa')
-    {
-        openssl_sign($fileContent, $signature, $privateKey, OPENSSL_ALGO_SHA256);
-
-        $hash = hash('sha256', $fileContent, true); // juste pour metadata
-
-        // Construire la structure CMS
-        $cmsData = [
-            'version' => 1,
-            'digestAlgorithm' => 'sha256',
-            'contentType' => 'data',
-            'signature' => base64_encode($signature),
-            'certificate' => base64_encode($publicKey),
-            'signedAttributes' => [
-                'contentType' => 'data',
-                'signingTime' => time(),
-                'messageDigest' => base64_encode($hash),
-            ],
-            'signatureAlgorithm' => $this->signatureAlgorithmLabel($algorithmUsed),
-            'file_id' => $fileSigned->id,
-            'timestamp' => now()->toIso8601String(),
-        ];
-
-        return json_encode($cmsData);
-    }
-
-    /**
-     * Génère une signature PAdES (PDF)
-     */
-    private function generatePadesSignature($filePath, $privateKey, $publicKey, $fileSigned, $algorithmUsed = 'rsa')
-    {
-        // Note: Cette implémentation est simplifiée
-        // Pour une vraie signature PAdES, utilisez une bibliothèque comme TCPDF, FPDI, ou setasign/FPDI
-
-        $pdfContent = file_get_contents($filePath);
-
-        openssl_sign($pdfContent, $signature, $privateKey, OPENSSL_ALGO_SHA256);
-
-        // Préparer les données de signature PAdES
-        $padesData = [
-            'version' => 'PAdES-Baseline',
-            'digestAlgorithm' => 'sha256',
-            'signature' => base64_encode($signature),
-            'certificate' => base64_encode($publicKey),
-            'signatureAlgorithm' => $this->signatureAlgorithmLabel($algorithmUsed),
-            'signingTime' => time(),
-            'byteRange' => [0, strlen($pdfContent), strlen($pdfContent) + 1000, 0], // Exemple
-            'subFilter' => 'ETSI.CAdES.detached',
-            'file_id' => $fileSigned->id,
-            'file_size' => strlen($pdfContent),
-        ];
-
-        return json_encode($padesData);
     }
 
     private function generateFingerprint($publicKey)
@@ -727,21 +672,12 @@ class SignatureController extends Controller
     private function storeDetachedSignature($signature, $signatureValue, $fileSigned)
     {
         $signatureDir = 'signatures/'.auth()->id().'/signatures/'.date('Y/m/d');
-        $signatureFileName = pathinfo($fileSigned->original_file_name, PATHINFO_FILENAME).'.p7s';
+        // L'identifiant évite l'écrasement entre deux documents de même nom.
+        $signatureFileName = Str::slug(pathinfo($fileSigned->original_file_name, PATHINFO_FILENAME)).'-'.$signature->id.'.p7s';
         $signaturePath = $signatureDir.'/'.$signatureFileName;
 
-        // $signatureValue est la structure CMS/PAdES encodée en JSON : il faut
-        // en extraire le champ 'signature' (base64) avant de le décoder,
-        // sinon le fichier produit n'est pas une signature binaire valide.
-        $decoded = json_decode($signatureValue, true);
-        $rawSignature = $decoded['signature'] ?? null;
-
-        if (! $rawSignature) {
-            return null;
-        }
-
-        $binarySignature = base64_decode($rawSignature);
-        Storage::disk('local')->put($signaturePath, $binarySignature);
+        // Fichier .p7s standard : le CMS en DER (et non son armure PEM).
+        Storage::disk('local')->put($signaturePath, $this->cms->pemToDer($signatureValue));
 
         // Mettre à jour la signature avec le chemin
         $signature->update([

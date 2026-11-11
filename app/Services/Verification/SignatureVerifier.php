@@ -5,6 +5,7 @@ namespace App\Services\Verification;
 use App\Models\FileSigned;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
+use App\Services\Crypto\CmsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -19,6 +20,8 @@ use RuntimeException;
  */
 class SignatureVerifier
 {
+    public function __construct(private readonly CmsService $cms = new CmsService) {}
+
     /** Messages utilisateur : l'UI connectée est en anglais, la page publique en français. */
     private const MESSAGES = [
         'en' => [
@@ -164,17 +167,27 @@ class SignatureVerifier
             throw new RuntimeException($this->text('invalid_format', $locale));
         }
 
-        $publicKey = $this->externalPublicKey($data);
+        if (isset($data['cms'])) {
+            // CMS : la signature est vérifiée avec le certificat qu'elle embarque.
+            $cmsResult = $this->cms->verify($file->getRealPath(), $data['cms']);
+            $publicKey = isset($cmsResult['signers'][0]) ? $this->cms->publicKeyFromCertificate($cmsResult['signers'][0]) : null;
+            $signatureValid = $cmsResult['valid'];
+            $data['signer'] ??= $this->certificateCommonName($cmsResult['signers'][0] ?? null);
+        } else {
+            $publicKey = $this->externalPublicKey($data);
 
-        if (! $publicKey) {
-            throw new RuntimeException($this->text('no_public_key', $locale));
+            if ($publicKey) {
+                $signatureValid = $this->opensslVerify(
+                    file_get_contents($file->getRealPath()),
+                    base64_decode($data['signature'], true) ?: '',
+                    $publicKey
+                );
+            }
         }
 
-        $signatureValid = $this->opensslVerify(
-            file_get_contents($file->getRealPath()),
-            base64_decode($data['signature'], true) ?: '',
-            $publicKey
-        );
+        if (! $publicKey) {
+            throw new RuntimeException($this->text(isset($data['cms']) ? 'invalid_format' : 'no_public_key', $locale));
+        }
 
         $fileHash = hash_file('sha256', $file->getRealPath());
         $documentIntegrity = isset($data['file_hash']) ? hash_equals((string) $data['file_hash'], $fileHash) : true;
@@ -217,8 +230,9 @@ class SignatureVerifier
     /**
      * Vérifie la valeur d'une signature enregistrée contre le contenu brut du document.
      *
-     * Formats pris en charge : structure JSON historique (`pdf`/`PAdES`/`cms`/`CAdES`)
-     * ou signature base64 brute. Toute erreur renvoie `false` (jamais d'exception).
+     * Formats pris en charge : CMS détaché standard (PEM) ; en lecture seule, les
+     * anciennes structures JSON (`pdf`/`PAdES`/`cms`/`CAdES`) et les signatures base64 brutes.
+     * Toute erreur renvoie `false` (jamais d'exception).
      */
     public function verifySignature(Signature $signature, string $content): bool
     {
@@ -229,7 +243,15 @@ class SignatureVerifier
                 return false;
             }
 
-            $json = json_decode((string) $signature->signature_value, true);
+            $value = (string) $signature->signature_value;
+
+            // Signature CMS standard (RFC 5652) : le certificat embarqué doit être celui de la clé enregistrée.
+            if ($this->cms->looksLikeCms($value)) {
+                return $this->verifyCmsAgainstKey($value, $content, $publicKey);
+            }
+
+            // Anciennes signatures : structure JSON maison ou signature base64 brute.
+            $json = json_decode($value, true);
 
             if (is_array($json) && isset($json['signature'])) {
                 $digest = $json['signedAttributes']['messageDigest'] ?? null;
@@ -249,7 +271,7 @@ class SignatureVerifier
         }
     }
 
-    /** Lit un fichier de signature externe : JSON, PKCS#7 ou signature binaire brute. */
+    /** Lit un fichier de signature externe : CMS/PKCS#7 (PEM ou DER), JSON ou signature binaire brute. */
     public function parseExternalSignature(string $content): ?array
     {
         $data = json_decode($content, true);
@@ -258,12 +280,11 @@ class SignatureVerifier
             return $data;
         }
 
-        $certificates = [];
-        if (@openssl_pkcs7_read($content, $certificates)) {
+        if ($this->cms->looksLikeCms($content)) {
             return [
-                'format' => 'PKCS7',
+                'format' => 'CMS',
                 'signature' => base64_encode($content),
-                'certificates' => $certificates,
+                'cms' => $content,
             ];
         }
 
@@ -290,6 +311,35 @@ class SignatureVerifier
     public function formattedFingerprint(string $publicKey): string
     {
         return implode(':', str_split(strtoupper($this->fingerprint($publicKey)), 2));
+    }
+
+    /** CMS valide ET signé par la clé enregistrée (le certificat embarqué ne suffit pas). */
+    private function verifyCmsAgainstKey(string $cms, string $content, string $publicKey): bool
+    {
+        $result = $this->cms->verifyContent($content, $cms);
+
+        if (! $result['valid']) {
+            return false;
+        }
+
+        $expected = preg_replace('/\s+/', '', $publicKey);
+
+        foreach ($result['signers'] as $certificate) {
+            $signerKey = $this->cms->publicKeyFromCertificate($certificate);
+
+            if ($signerKey !== null && hash_equals($expected, preg_replace('/\s+/', '', $signerKey))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function certificateCommonName(?string $certificatePem): ?string
+    {
+        $parsed = $certificatePem ? @openssl_x509_parse($certificatePem) : false;
+
+        return $parsed['subject']['CN'] ?? null;
     }
 
     private function externalPublicKey(array $data): ?string
