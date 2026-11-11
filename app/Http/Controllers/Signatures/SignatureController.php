@@ -9,6 +9,7 @@ use App\Models\Signature;
 use App\Models\SignatureVerification;
 use App\Services\Crypto\CertificateAuthority;
 use App\Services\Crypto\CmsService;
+use App\Services\Crypto\TimestampAuthority;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +19,11 @@ use Inertia\Inertia;
 
 class SignatureController extends Controller
 {
-    public function __construct(private readonly CmsService $cms, private readonly CertificateAuthority $ca) {}
+    public function __construct(
+        private readonly CmsService $cms,
+        private readonly CertificateAuthority $ca,
+        private readonly TimestampAuthority $tsa,
+    ) {}
 
     public function show(Request $request, $id)
     {
@@ -575,7 +580,7 @@ class SignatureController extends Controller
                 'signing_ip' => $request->ip(),
                 'signing_device_info' => $request->userAgent(),
                 'nonce_value' => bin2hex(random_bytes(32)), // Pour anti-replay
-                'timestamp_token' => $this->generateTimestampToken(),
+                'timestamp_token' => $this->timestampToken($signatureValue),
             ]);
 
             // Stocker la signature détachée (.p7s, CMS encodé en DER)
@@ -658,13 +663,30 @@ class SignatureController extends Controller
     }
 
     /**
-     * Génère un token d'horodatage
+     * Horodatage de la signature : RFC 3161 auprès de la TSA configurée, sinon (ou si elle
+     * est injoignable) horodatage interne. Une TSA en panne ne doit jamais empêcher de signer.
+     */
+    private function timestampToken(string $signatureValue): string
+    {
+        if ($this->tsa->enabled()) {
+            try {
+                // On horodate la signature elle-même (le .p7s en DER).
+                return json_encode($this->tsa->timestamp($this->cms->pemToDer($signatureValue)));
+            } catch (\Throwable $e) {
+                \Log::warning('Timestamp authority unavailable, falling back to the internal timestamp: '.$e->getMessage());
+            }
+        }
+
+        return $this->generateTimestampToken();
+    }
+
+    /**
+     * Horodatage interne : heure du serveur, sans tiers de confiance.
      */
     private function generateTimestampToken()
     {
-        // Idéalement, utilisez un service TSA (Time Stamping Authority)
-        // Pour l'instant, on crée un token simple
         return json_encode([
+            'type' => 'internal',
             'time' => now()->toIso8601String(),
             'nonce' => bin2hex(random_bytes(16)),
             'server' => gethostname(),

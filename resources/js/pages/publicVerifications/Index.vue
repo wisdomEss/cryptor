@@ -49,6 +49,7 @@ const verificationResult = ref<null | {
         algorithm: string;
         fingerprint: string;
         certificate_trust?: string;
+        timestamp?: { status: string; time: string | null };
         certificate_info?: any;
         warning?: string;
     };
@@ -89,6 +90,29 @@ const trustInfo = (status: string) => {
     };
 
     return infos[status] ?? infos.unknown;
+};
+
+const timestampInfo = (status: string) => {
+    const infos: Record<string, { label: string; class: string }> = {
+        trusted: {
+            label: 'Horodaté par une autorité de confiance (RFC 3161)',
+            class: 'text-green-600 dark:text-green-400',
+        },
+        untrusted_tsa: {
+            label: 'Horodaté par une autorité non reconnue (RFC 3161)',
+            class: 'text-yellow-600 dark:text-yellow-400',
+        },
+        internal: {
+            label: 'Horodatage interne (heure du serveur, sans tiers)',
+            class: 'text-yellow-600 dark:text-yellow-400',
+        },
+        invalid: {
+            label: 'Horodatage invalide',
+            class: 'text-red-600 dark:text-red-400',
+        },
+    };
+
+    return infos[status];
 };
 
 const verificationMethod = ref<'token' | 'upload'>('token');
@@ -575,6 +599,54 @@ const getStatusBadge = (valid: boolean) => {
                                             class="underline"
                                             >liste de révocation</a
                                         >
+                                    </span>
+                                </div>
+                            </div>
+                            <div
+                                v-if="
+                                    verificationResult.details.timestamp &&
+                                    timestampInfo(
+                                        verificationResult.details.timestamp
+                                            .status,
+                                    )
+                                "
+                                class="rounded-lg border border-gray-200 bg-white p-3 sm:col-span-2 dark:border-gray-800 dark:bg-gray-900"
+                            >
+                                <span
+                                    class="text-xs text-gray-500 dark:text-gray-400"
+                                    >Horodatage</span
+                                >
+                                <div class="mt-1 text-sm">
+                                    <span
+                                        :class="
+                                            timestampInfo(
+                                                verificationResult.details
+                                                    .timestamp.status,
+                                            ).class
+                                        "
+                                        class="font-medium"
+                                    >
+                                        {{
+                                            timestampInfo(
+                                                verificationResult.details
+                                                    .timestamp.status,
+                                            ).label
+                                        }}
+                                    </span>
+                                    <span
+                                        v-if="
+                                            verificationResult.details.timestamp
+                                                .time
+                                        "
+                                        class="text-gray-500 dark:text-gray-400"
+                                    >
+                                        —
+                                        {{
+                                            new Date(
+                                                verificationResult.details
+                                                    .timestamp.time,
+                                            ).toLocaleString('fr-FR')
+                                        }}
                                     </span>
                                 </div>
                             </div>

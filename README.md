@@ -67,6 +67,11 @@ npx vue-tsc --noEmit          # vérification des types
 npm run build                 # build de production
 ```
 
+## Qualité
+
+La CI mesure la **couverture des tests** (rapport dans le résumé du job et artefact `coverage`). Pour la rendre
+bloquante, définissez la variable GitHub Actions `COVERAGE_MIN` (en %, par ex. `70`).
+
 ## Sécurité
 
 - Authentification Fortify, vérification d'e-mail, **2FA (TOTP)**, limitation de débit sur la connexion
@@ -100,12 +105,25 @@ Commandes : `php artisan cryptor:ca-init` (affiche l'empreinte de l'autorité) e
 avec la même clé ; `--dry-run` pour simuler). Nom, organisation et pays se règlent dans `.env`
 (`CRYPTOR_CA_NAME`, `CRYPTOR_ORGANIZATION`, `CRYPTOR_COUNTRY`).
 
+## Horodatage (optionnel)
+
+Par défaut l'horodatage est **interne** : il prouve quand le serveur a vu la signature. Pour une preuve de date
+attestée par un tiers, configurez une autorité d'horodatage **RFC 3161** dans `.env` :
+
+```
+CRYPTOR_TSA_URL=https://freetsa.org/tsr
+CRYPTOR_TSA_CA_FILE=/chemin/vers/cacert.pem   # certificats de l'autorité à reconnaître
+```
+
+Le jeton est vérifié (signature, empreinte, nonce, usage du certificat) et son statut s'affiche à la
+vérification. Si l'autorité est injoignable, la signature est quand même créée avec l'horodatage interne.
+
 ## Limites connues
 
 - Une seule autorité, sans renouvellement automatique (valide 10 ans) ; pas de CRL X.509 binaire : la liste
   de révocation est un JSON signé.
 - Le format « PDF » est un CMS détaché du fichier, pas une signature PAdES incorporée au PDF.
-- L'horodatage est interne (pas d'autorité RFC 3161). Voir `CLAUDE.md` pour la feuille de route.
+- Sans autorité d'horodatage configurée, l'horodatage est interne (heure du serveur). Voir `CLAUDE.md` pour la feuille de route.
 
 ## Déploiement
 

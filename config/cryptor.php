@@ -31,4 +31,26 @@ return [
         'max_days' => 3650,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Horodatage RFC 3161 (optionnel, désactivé par défaut)
+    |--------------------------------------------------------------------------
+    |
+    | Sans `url`, CRYPTOR utilise un horodatage interne (heure du serveur) : il prouve
+    | quand l'application a vu la signature, pas davantage. Avec une autorité
+    | d'horodatage (TSA), l'heure est attestée par un tiers de confiance.
+    |
+    | `ca_file` : fichier PEM des certificats de la TSA à reconnaître (racine et
+    | intermédiaires). Sans lui, le jeton est vérifié mais la TSA reste « non reconnue ».
+    |
+    | Exemple (FreeTSA, gratuit) : CRYPTOR_TSA_URL=https://freetsa.org/tsr
+    |                               CRYPTOR_TSA_CA_FILE=/chemin/vers/freetsa-cacert.pem
+    |
+    */
+    'tsa' => [
+        'url' => env('CRYPTOR_TSA_URL'),
+        'ca_file' => env('CRYPTOR_TSA_CA_FILE'),
+        'timeout' => (int) env('CRYPTOR_TSA_TIMEOUT', 10),
+    ],
+
 ];

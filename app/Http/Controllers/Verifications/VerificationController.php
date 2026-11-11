@@ -181,6 +181,7 @@ class VerificationController extends Controller
                 'signature_valid' => $r['signature_valid'],
                 'document_integrity' => $r['document_integrity'],
                 'certificate_trust' => $r['certificate_trust'],
+                'timestamp' => $r['timestamp'],
                 'signer' => $signature->signer->name ?? 'Unknown',
                 'signed_at' => $signature->signed_at->toIso8601String(),
                 'algorithm' => $signature->algorithm_used,

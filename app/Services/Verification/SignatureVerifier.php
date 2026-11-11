@@ -7,6 +7,7 @@ use App\Models\Signature;
 use App\Models\SignatureVerification;
 use App\Services\Crypto\CertificateAuthority;
 use App\Services\Crypto\CmsService;
+use App\Services\Crypto\TimestampAuthority;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -24,6 +25,7 @@ class SignatureVerifier
     public function __construct(
         private readonly CmsService $cms = new CmsService,
         private readonly CertificateAuthority $authority = new CertificateAuthority,
+        private readonly TimestampAuthority $timestamps = new TimestampAuthority,
     ) {}
 
     /** Messages utilisateur : l'UI connectée est en anglais, la page publique en français. */
@@ -82,7 +84,7 @@ class SignatureVerifier
     /**
      * Vérifie un document connu du système et journalise la vérification.
      *
-     * @return array{verification: SignatureVerification, signature: Signature, success: bool, document_integrity: bool, signature_valid: bool, key_valid: bool, certificate_trust: string}
+     * @return array{verification: SignatureVerification, signature: Signature, success: bool, document_integrity: bool, signature_valid: bool, key_valid: bool, certificate_trust: string, timestamp: array}
      */
     public function verifyInternal(
         FileSigned $fileSigned,
@@ -113,6 +115,7 @@ class SignatureVerifier
         // Information de confiance du certificat (n'influence pas `success` : les clés
         // créées avant l'AC interne ont un certificat auto-signé mais restent utilisables).
         $certificateTrust = $this->certificateTrust($signature->keyPair?->certificate_data);
+        $timestamp = $this->timestampStatus($signature);
 
         $verification = SignatureVerification::create([
             'signature_id' => $signature->id,
@@ -126,6 +129,7 @@ class SignatureVerifier
                 'signature_valid' => $signatureValid,
                 'key_valid' => $keyValid,
                 'certificate_trust' => $certificateTrust,
+                'timestamp' => $timestamp,
                 'format' => $signature->signature_format,
                 'algorithm' => $signature->algorithm_used,
             ],
@@ -149,6 +153,7 @@ class SignatureVerifier
             'signature_valid' => $signatureValid,
             'key_valid' => $keyValid,
             'certificate_trust' => $certificateTrust,
+            'timestamp' => $timestamp,
         ];
     }
 
@@ -326,6 +331,40 @@ class SignatureVerifier
     public function formattedFingerprint(string $publicKey): string
     {
         return implode(':', str_split(strtoupper($this->fingerprint($publicKey)), 2));
+    }
+
+    /**
+     * État de l'horodatage d'une signature.
+     *
+     * status : trusted (RFC 3161, TSA reconnue) | untrusted_tsa (RFC 3161 valide, TSA non reconnue)
+     *          | invalid (jeton RFC 3161 qui ne correspond plus) | internal (heure du serveur) | none
+     *
+     * @return array{status: string, time: ?string}
+     */
+    public function timestampStatus(Signature $signature): array
+    {
+        $token = json_decode((string) $signature->timestamp_token, true);
+
+        if (! is_array($token)) {
+            return ['status' => 'none', 'time' => null];
+        }
+
+        if (($token['type'] ?? 'internal') !== 'rfc3161') {
+            return ['status' => 'internal', 'time' => $token['time'] ?? null];
+        }
+
+        try {
+            $der = $this->cms->pemToDer((string) $signature->signature_value);
+            $result = $this->timestamps->verifyToken(base64_decode((string) ($token['token'] ?? ''), true) ?: '', hash('sha256', $der, true));
+        } catch (\Throwable) {
+            return ['status' => 'invalid', 'time' => null];
+        }
+
+        if (! $result['valid']) {
+            return ['status' => 'invalid', 'time' => null];
+        }
+
+        return ['status' => $result['trusted'] ? 'trusted' : 'untrusted_tsa', 'time' => $result['gen_time']];
     }
 
     /**
