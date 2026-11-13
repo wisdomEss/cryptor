@@ -177,3 +177,10 @@ Symptôme en production : `/` répond, `/login` donne « 502 Bad Gateway », pui
 - Le middleware est **retiré** (Vite met déjà `<link rel="modulepreload">` dans le HTML). Les en-têtes font ~1,8 Ko partout.
 - Garde-fou : `SecurityHeadersTest` vérifie que les en-têtes de `/`, `/login`, `/register`, `/forgot-password` restent sous 3 000 octets en production, et qu'aucun en-tête `Link` n'est émis. **Ne pas réajouter** ce middleware sans augmenter `fastcgi_buffer_size` côté nginx.
 - Mesure rapide : script de sonde (kernel HTTP + `Request::create`) qui somme `strlen` des lignes de `$response->headers`.
+
+### 419 « Page Expired » à la connexion en production (2026-11-12)
+
+`tests/Feature/LoginBehindProxyTest.php` rejoue le parcours du navigateur derrière le proxy (requête reçue en HTTP depuis le proxy de confiance, cookies de session `Secure` et chiffrés, jeton CSRF dans `X-XSRF-TOKEN`) : la connexion **réussit** côté application, un mauvais mot de passe donne 422, et **sans cookies on obtient 419**. Un 419 persistant en production indique donc que les cookies n'atteignent pas l'application (réponse rejetée, cookies retirés/mis en cache par Cloudflare, WAF ou nginx) ou qu'elle en reçoit **en double**.
+- Piège connu : changer `SESSION_DOMAIN` (ex. `.exemple.org` → vide) laisse dans le navigateur l'ancien cookie `Domain=.exemple.org` **en plus** du nouveau cookie limité à l'hôte, même nom. PHP lit le premier : session invalide, 419 à chaque tentative. Il faut supprimer les cookies du site (tous domaines et sous-domaines) après un changement de domaine ou de chiffrement de session.
+- Test hors navigateur depuis le serveur : `curl -c jar` sur `/login`, relever `Set-Cookie`, puis POST avec l'en-tête `X-XSRF-TOKEN` (valeur du cookie XSRF-TOKEN décodée). 422 = tout fonctionne ; 419 = cookies perdus en chemin ; 502 = tampon d'un proxy/nginx.
+- **Ne jamais lancer `migrate:fresh` en production** (efface la base) : `DB::prohibitDestructiveCommands` le bloque quand `APP_ENV=production`.

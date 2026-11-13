@@ -43,6 +43,12 @@ Tout se règle dans `.env` (copie de `.env.example`).
   `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, puis `php artisan migrate`.
 - **E-mails** : par défaut `MAIL_MAILER=log` (les e-mails de vérification et de réinitialisation sont écrits
   dans `storage/logs/laravel.log`). Configurez un vrai SMTP pour les envoyer.
+- **Envoi par Gmail** : `MAIL_MAILER=smtp` (sans lui, rien n'est envoyé), `MAIL_HOST=smtp.gmail.com`, `MAIL_PORT=587`,
+  `MAIL_USERNAME` (l'adresse), `MAIL_PASSWORD` = un **mot de passe d'application** (Compte Google > Sécurité >
+  Validation en deux étapes > Mots de passe des applications). La validation en deux étapes doit rester **activée**
+  : c'est elle qui permet de créer ce mot de passe. `MAIL_ENCRYPTION` n'existe plus depuis Laravel 11 ; le STARTTLS du
+  port 587 est négocié automatiquement (`MAIL_SCHEME=smtps` seulement pour le port 465). Limite de Gmail : environ
+  500 destinataires par jour ; au-delà, utilisez un service d'envoi transactionnel.
 - **Confirmation de l'adresse e-mail** : obligatoire par défaut. Un compte non confirmé ne peut utiliser ni clés,
   ni signatures, ni vérifications (il peut renvoyer le lien, corriger son adresse et se déconnecter). En essai
   local sans serveur d'e-mail, ouvrez le lien dans `storage/logs/laravel.log` ou lancez
