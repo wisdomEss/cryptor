@@ -184,3 +184,11 @@ Symptôme en production : `/` répond, `/login` donne « 502 Bad Gateway », pui
 - Piège connu : changer `SESSION_DOMAIN` (ex. `.exemple.org` → vide) laisse dans le navigateur l'ancien cookie `Domain=.exemple.org` **en plus** du nouveau cookie limité à l'hôte, même nom. PHP lit le premier : session invalide, 419 à chaque tentative. Il faut supprimer les cookies du site (tous domaines et sous-domaines) après un changement de domaine ou de chiffrement de session.
 - Test hors navigateur depuis le serveur : `curl -c jar` sur `/login`, relever `Set-Cookie`, puis POST avec l'en-tête `X-XSRF-TOKEN` (valeur du cookie XSRF-TOKEN décodée). 422 = tout fonctionne ; 419 = cookies perdus en chemin ; 502 = tampon d'un proxy/nginx.
 - **Ne jamais lancer `migrate:fresh` en production** (efface la base) : `DB::prohibitDestructiveCommands` le bloque quand `APP_ENV=production`.
+
+### « 403 Invalid signature » sur le lien de confirmation d'e-mail (2026-11-14)
+
+Cause : `URL::forceScheme('https')` ne change que les URLs *générées*. Un lien signé est généré en `https://…` puis revalidé par `hasValidSignature()` avec **l'URL de la requête reçue** (`$request->url()`) ; derrière un proxy qui retransmet en HTTP simple (et dont l'IP n'est pas dans `TRUSTED_PROXIES`), la requête paraît en `http://` → signature différente → 403.
+- `App\Http\Middleware\ForceHttpsRequest` (préfixé dans la pile globale, actif seulement si `cryptor.force_https`) présente la requête comme HTTPS : drapeau `HTTPS=on`, `X-Forwarded-Proto: https`, `X-Forwarded-Port` = port de l'en-tête `Host` ou 443 (jamais 80 : Symfony écrirait `https://hôte:80`).
+- `SignedLinksBehindProxyTest` couvre : requête en HTTP simple, proxy non reconnu, proxy de confiance annonçant « http » et port 80 ; et vérifie qu'un lien **falsifié** ou **expiré** reste refusé.
+- Toute fonction qui dépend de l'URL de la requête (liens signés, `url()->current()`, `route()->is()` sur URL complète) doit rester cohérente avec le schéma servi publiquement : ne pas retirer ce middleware.
+- Dépannage immédiat d'un compte bloqué : `php artisan cryptor:verify-user adresse@exemple.org`.

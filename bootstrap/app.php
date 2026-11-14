@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureVerifiedEmail;
+use App\Http\Middleware\ForceHttpsRequest;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\SecurityHeaders;
@@ -20,6 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // `verified` est remplacé par une version pilotée par cryptor.require_verified_email.
         $middleware->alias(['verified' => EnsureVerifiedEmail::class]);
+
+        // Avant tout le reste : une URL signée doit être revalidée avec le même schéma que celui de sa génération.
+        $middleware->prepend(ForceHttpsRequest::class);
 
         $middleware->append(SecurityHeaders::class);
 

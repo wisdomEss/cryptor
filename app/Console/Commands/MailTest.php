@@ -38,7 +38,7 @@ class MailTest extends Command
         }
 
         try {
-            Mail::raw('Ce message confirme que l\'envoi d\'e-mails de CRYPTOR fonctionne.', function ($message) use ($to) {
+            $sent = Mail::raw('Ce message confirme que l\'envoi d\'e-mails de CRYPTOR fonctionne.', function ($message) use ($to) {
                 $message->to($to)->subject('Test CRYPTOR');
             });
         } catch (\Throwable $e) {
@@ -46,6 +46,13 @@ class MailTest extends Command
             $this->error('Échec de l\'envoi : '.$e->getMessage());
 
             return self::FAILURE;
+        }
+
+        // Dernière réponse du serveur SMTP (« 250 ... queued as <identifiant> ») : elle permet de retrouver
+        // le message dans le tableau de bord du fournisseur. Seules les lignes envoyées PAR le serveur
+        // (« < ... ») sont reprises : jamais les commandes du client, donc jamais d'identifiants.
+        if ($sent && preg_match_all('/^< (.+?)\r?$/m', (string) $sent->getDebug(), $replies) && $replies[1] !== []) {
+            $this->line('Réponse du serveur : '.trim((string) end($replies[1])));
         }
 
         $this->info("Message accepté par le serveur d'envoi pour {$to}. Vérifiez la boîte de réception (et les spams).");
