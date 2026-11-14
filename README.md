@@ -43,6 +43,13 @@ Tout se règle dans `.env` (copie de `.env.example`).
   `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, puis `php artisan migrate`.
 - **E-mails** : par défaut `MAIL_MAILER=log` (les e-mails de vérification et de réinitialisation sont écrits
   dans `storage/logs/laravel.log`). Configurez un vrai SMTP pour les envoyer.
+- **Envoi par Brevo** (recommandé en production, 300 e-mails/jour gratuits) : `MAIL_MAILER=smtp`,
+  `MAIL_HOST=smtp-relay.brevo.com`, `MAIL_PORT=587`, `MAIL_USERNAME` = le « login SMTP » et `MAIL_PASSWORD` = la
+  « clé SMTP », tous deux affichés dans Brevo > SMTP & API (ce ne sont pas les identifiants du compte).
+  `MAIL_FROM_ADDRESS` doit être un **expéditeur validé** dans Brevo, idéalement une adresse de **votre domaine**
+  (`no-reply@votre-domaine`) dont le domaine est authentifié (enregistrements DNS SPF/DKIM/DMARC fournis par Brevo) :
+  sans cela, les messages finissent souvent en spam. Si Brevo refuse la connexion (« unrecognised IP address »),
+  ajoutez l'IP publique du serveur dans Brevo > Sécurité > Adresses IP autorisées.
 - **Envoi par Gmail** : `MAIL_MAILER=smtp` (sans lui, rien n'est envoyé), `MAIL_HOST=smtp.gmail.com`, `MAIL_PORT=587`,
   `MAIL_USERNAME` (l'adresse), `MAIL_PASSWORD` = un **mot de passe d'application** (Compte Google > Sécurité >
   Validation en deux étapes > Mots de passe des applications). La validation en deux étapes doit rester **activée**
