@@ -19,6 +19,7 @@ import {
 import { route as ziggyRoute } from 'ziggy-js';
 import type { Config } from 'ziggy-js';
 
+import Pagination, { type PaginationMeta } from '@/components/Pagination.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -79,6 +80,9 @@ interface Signature {
 const props = defineProps<{
     signatures: Signature[];
     type?: 'all' | 'pending' | 'revoked' | 'expired';
+    pagination?: PaginationMeta | null;
+    /** Compteurs calculés en base sur la liste entière, pas sur la page affichée. */
+    stats: { total: number; valid: number; pending: number };
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -235,21 +239,11 @@ const getTypeLabel = () => {
                 </CardHeader>
                 <CardContent>
                     <div class="text-2xl font-bold">
-                        {{ signatures.length }}
+                        {{ props.stats.total }}
                     </div>
                     <p class="mt-1 text-xs text-muted-foreground">
-                        {{
-                            signatures.filter(
-                                (s) => s.validation_status === 'valid',
-                            ).length
-                        }}
-                        valid,
-                        {{
-                            signatures.filter(
-                                (s) => s.validation_status === 'pending',
-                            ).length
-                        }}
-                        pending
+                        {{ props.stats.valid }} valid,
+                        {{ props.stats.pending }} pending
                     </p>
                 </CardContent>
             </Card>
@@ -470,6 +464,8 @@ const getTypeLabel = () => {
                             </TableRow>
                         </TableBody>
                     </Table>
+
+                    <Pagination :pagination="pagination" />
                 </CardContent>
             </Card>
         </div>

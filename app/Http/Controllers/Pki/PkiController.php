@@ -19,6 +19,9 @@ class PkiController extends Controller
         return response($this->ca->certificate(), 200, [
             'Content-Type' => 'application/x-x509-ca-cert',
             'Content-Disposition' => 'attachment; filename="cryptor-ca.crt"',
+            // Contenu public et quasi immuable (l'AC vit dix ans) : il n'y a aucune
+            // raison de le régénérer à chaque téléchargement.
+            'Cache-Control' => 'public, max-age=3600',
         ]);
     }
 
@@ -28,6 +31,9 @@ class PkiController extends Controller
      */
     public function revocations()
     {
-        return response()->json($this->ca->revocationList());
+        // La liste est signée et datée : une minute de cache suffit à absorber les
+        // rafales sans retarder la prise en compte d'une révocation.
+        return response()->json($this->ca->revocationList())
+            ->header('Cache-Control', 'public, max-age=60');
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Services\Signing;
 
+use App\Exceptions\UserFacingException;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
 use App\Models\User;
@@ -17,6 +18,12 @@ class SignatureManager
 {
     public function validate(Signature $signature, User $by, ?string $notes, ClientContext $client): void
     {
+        // Sans ce contrôle, un PATCH sur signatures.validate remettait `is_valid` à vrai
+        // sur une signature révoquée : la révocation était annulable par son auteur.
+        if ($signature->revoked_at !== null || $signature->validation_status === 'revoked') {
+            throw new UserFacingException('A revoked signature cannot be validated again.');
+        }
+
         DB::transaction(function () use ($signature, $by, $notes, $client) {
             $signature->update([
                 'validation_status' => 'valid',

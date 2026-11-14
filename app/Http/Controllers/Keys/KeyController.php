@@ -13,6 +13,7 @@ use App\Services\Keys\KeyBackupService;
 use App\Services\Keys\KeyManager;
 use App\Services\Keys\SshKeyExporter;
 use App\Support\ClientContext;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -25,21 +26,41 @@ use Inertia\Inertia;
  */
 class KeyController extends Controller
 {
+    /** Lignes par page des listes de clés. */
+    private const PER_PAGE = 15;
+
     public function __construct(
         private readonly KeyManager $keys,
         private readonly KeyBackupService $backups,
         private readonly SshKeyExporter $ssh,
     ) {}
 
+    /** Liste paginée. Les compteurs affichés en tête sont calculés en SQL, pas sur la page courante. */
     public function index()
     {
         $keys = KeyPair::where('user_id', Auth::id())
+            ->select(['id', 'key_name', 'algorithm_used', 'key_size', 'is_default', 'is_active', 'is_revoked', 'valid_from', 'valid_to', 'created_at', 'public_key'])
             ->orderBy('is_default', 'desc')
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->paginate(self::PER_PAGE);
+
+        $stats = KeyPair::where('user_id', Auth::id())
+            ->selectRaw('count(*) as total')
+            ->selectRaw('sum(case when is_active = 1 and is_revoked = 0 then 1 else 0 end) as active')
+            ->selectRaw('sum(case when valid_to is not null and valid_to > ? and valid_to <= ? then 1 else 0 end) as expiring', [now(), now()->addDays(30)])
+            ->first();
 
         return Inertia::render('keys/Index', [
-            'keys' => KeyListResource::collection($keys)->resolve(),
+            'keys' => KeyListResource::collection($keys->items())->resolve(),
+            'pagination' => $this->pagination($keys),
+            'stats' => [
+                'total' => (int) $stats->total,
+                'active' => (int) $stats->active,
+                'expiring' => (int) $stats->expiring,
+                'default_key_name' => KeyPair::where('user_id', Auth::id())
+                    ->where('is_default', true)
+                    ->value('key_name'),
+            ],
         ]);
     }
 
@@ -68,17 +89,19 @@ class KeyController extends Controller
     {
         $keys = KeyPair::where('user_id', Auth::id())
             ->where('is_revoked', true)
+            ->select(['id', 'key_name', 'algorithm_used', 'key_size', 'revoked_at', 'public_key'])
             ->orderBy('revoked_at', 'desc')
-            ->get();
+            ->paginate(self::PER_PAGE);
 
         return Inertia::render('keys/Revoke', [
-            'keys' => RevokedKeyResource::collection($keys)->resolve(),
+            'keys' => RevokedKeyResource::collection($keys->items())->resolve(),
+            'pagination' => $this->pagination($keys),
         ]);
     }
 
     public function show($id)
     {
-        $key = $this->ownedKey($id, 'view');
+        $key = $this->ownedKey($id, 'view')->loadCount('signatures');
 
         return Inertia::render('keys/Show', [
             'keyData' => KeyDetailResource::make($key)->resolve(),
@@ -250,6 +273,17 @@ class KeyController extends Controller
         }
 
         return redirect($redirectTo)->with('success', $success);
+    }
+
+    /** Métadonnées de pagination envoyées aux pages Inertia. */
+    private function pagination(LengthAwarePaginator $paginator): array
+    {
+        return [
+            'current_page' => $paginator->currentPage(),
+            'last_page' => $paginator->lastPage(),
+            'per_page' => $paginator->perPage(),
+            'total' => $paginator->total(),
+        ];
     }
 
     private function textDownload(string $content, string $filename, string $type)

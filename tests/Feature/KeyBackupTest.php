@@ -216,6 +216,23 @@ class KeyBackupTest extends TestCase
         $this->assertSame('self_signed', (new CertificateAuthority)->validateChain($imported->certificate_data)['status']);
     }
 
+    public function test_import_rejects_a_certificate_that_falsely_claims_our_issuer(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        // Certificat auto-signé dont le CN du sujet (donc de l'émetteur) imite l'AC interne :
+        // `certificate_issuer` est affiché tel quel dans l'interface.
+        $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
+        $csr = openssl_csr_new(['commonName' => config('cryptor.ca.name')], $key, ['digest_alg' => 'sha256']);
+        openssl_pkcs12_export(openssl_csr_sign($csr, null, $key, 365), $p12, $key, self::PASSPHRASE);
+
+        $this->import(['file' => UploadedFile::fake()->createWithContent('fake-ca.p12', $p12)])
+            ->assertSessionHasErrors('file');
+
+        $this->assertSame(0, KeyPair::count());
+    }
+
     // ------------------------------------------------------------------ update
 
     public function test_update_cannot_change_the_certificate_or_its_issuer(): void

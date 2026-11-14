@@ -22,7 +22,6 @@ class User extends Authenticatable implements MustVerifyEmail
         'name',
         'phone_number',
         'is_active',
-        'is_email_verified',
         'two_factor_enabled',
         'role',
         'timezone',
@@ -42,7 +41,6 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $casts = [
         'password' => 'hashed',
         'is_active' => 'boolean',
-        'is_email_verified' => 'boolean',
         'two_factor_enabled' => 'boolean',
         'preferences' => 'array',
         'last_login' => 'datetime',
@@ -92,11 +90,6 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     // Méthodes utiles
-    public function canSign(): bool
-    {
-        return $this->is_active && $this->is_email_verified;
-    }
-
     public function hasKeyPair(): bool
     {
         return $this->keyPairs()->where('is_active', true)->exists();

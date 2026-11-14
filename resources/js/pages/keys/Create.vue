@@ -612,9 +612,7 @@ const resetForm = () => {
                                     class="h-auto p-0 font-normal"
                                     @click="showAdvanced = !showAdvanced"
                                 >
-                                    {{
-                                        showAdvanced ? 'Hide' : 'Show'
-                                    }}
+                                    {{ showAdvanced ? 'Hide' : 'Show' }}
                                     advanced options
                                 </Button>
 
@@ -657,9 +655,7 @@ const resetForm = () => {
                                             showCertificate = !showCertificate
                                         "
                                     >
-                                        {{
-                                            showCertificate ? 'Hide' : 'Add'
-                                        }}
+                                        {{ showCertificate ? 'Hide' : 'Add' }}
                                         certificate information
                                     </Button>
 

@@ -73,6 +73,20 @@ class KeyBackupService
             throw new UserFacingException('This certificate has expired.', 'file');
         }
 
+        // `certificate_issuer` est affiché tel quel dans l'interface : un certificat
+        // fabriqué ailleurs ne doit pas pouvoir s'annoncer comme émis par l'AC interne
+        // (il resterait `untrusted`, mais l'émetteur affiché tromperait le lecteur).
+        $issuer = $cert['issuer']['CN'] ?? null;
+
+        if ($issuer !== null
+            && $issuer === config('cryptor.ca.name')
+            && ! $this->authority->isIssuedByCa($bundle['cert'])) {
+            throw new UserFacingException(
+                'This certificate claims to be issued by this platform but is not signed by it.',
+                'file'
+            );
+        }
+
         $normalize = fn (string $pem) => preg_replace('/\s+/', '', $pem);
         $duplicate = KeyPair::where('user_id', $user->id)->pluck('public_key')
             ->contains(fn ($existing) => $normalize($existing) === $normalize($details['key']));
@@ -97,7 +111,7 @@ class KeyBackupService
             'valid_from' => Carbon::createFromTimestamp($cert['validFrom_time_t']),
             'valid_to' => Carbon::createFromTimestamp($cert['validTo_time_t']),
             'certificate_data' => $bundle['cert'],
-            'certificate_issuer' => $cert['issuer']['CN'] ?? null,
+            'certificate_issuer' => $issuer,
             'created_by_ip' => $client->ip,
             'created_by_user_agent' => $client->userAgent,
         ]);

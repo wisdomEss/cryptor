@@ -21,47 +21,68 @@ class DashboardController extends Controller
     {
         $userId = Auth::id();
 
-        // Statistiques générales
-        $totalKeys = KeyPair::where('user_id', $userId)->count();
-        $activeKeys = KeyPair::where('user_id', $userId)->active()->count();
-        $defaultKey = KeyPair::where('user_id', $userId)->where('is_default', true)->first();
+        // Un seul passage par table : les compteurs sont des agrégats conditionnels
+        // (avant, le tableau de bord faisait une quinzaine de requêtes, dont trois
+        // sous-requêtes `whereHas` identiques sur les vérifications).
+        $keyStats = KeyPair::where('user_id', $userId)
+            ->selectRaw('count(*) as total')
+            ->selectRaw('sum(case when is_active = 1 and is_revoked = 0 then 1 else 0 end) as active')
+            ->selectRaw('sum(case when valid_to is not null and valid_to > ? and valid_to <= ? then 1 else 0 end) as expiring', [now(), now()->addDays(30)])
+            ->first();
 
-        // Statistiques des signatures
-        $totalSignatures = Signature::where('signer_id', $userId)->count();
-        $validSignatures = Signature::where('signer_id', $userId)->valid()->count();
-        $pendingSignatures = Signature::where('signer_id', $userId)->pendingValidation()->count();
-        $revokedSignatures = Signature::where('signer_id', $userId)->whereNotNull('revoked_at')->count();
+        $totalKeys = (int) $keyStats->total;
+        $activeKeys = (int) $keyStats->active;
+        $expiringKeys = (int) $keyStats->expiring;
+
+        $defaultKey = KeyPair::where('user_id', $userId)
+            ->where('is_default', true)
+            ->select(['id', 'key_name', 'public_key'])
+            ->first();
+
+        $signatureStats = Signature::where('signer_id', $userId)
+            ->selectRaw('count(*) as total')
+            ->selectRaw("sum(case when is_valid = 1 and validation_status = 'valid' then 1 else 0 end) as valid")
+            ->selectRaw("sum(case when validation_status = 'pending' then 1 else 0 end) as pending")
+            ->selectRaw('sum(case when revoked_at is not null then 1 else 0 end) as revoked')
+            ->first();
+
+        $totalSignatures = (int) $signatureStats->total;
+        $validSignatures = (int) $signatureStats->valid;
+        $pendingSignatures = (int) $signatureStats->pending;
+        $revokedSignatures = (int) $signatureStats->revoked;
 
         // Statistiques des fichiers signés
         $totalFiles = FileSigned::where('uploader_id', $userId)->count();
         $recentFiles = FileSigned::where('uploader_id', $userId)
+            ->select(['id', 'original_file_name', 'file_size', 'status', 'created_at'])
             ->latest()
             ->limit(5)
             ->get();
 
         // Statistiques des vérifications
-        $totalVerifications = SignatureVerification::whereHas('signature', function ($q) use ($userId) {
+        $verificationStats = SignatureVerification::whereHas('signature', function ($q) use ($userId) {
             $q->where('signer_id', $userId);
-        })->count();
+        })
+            ->selectRaw('count(*) as total')
+            ->selectRaw('sum(case when result = 1 then 1 else 0 end) as successful')
+            ->selectRaw('sum(case when is_public_verification = 1 then 1 else 0 end) as public_count')
+            ->first();
 
-        $successfulVerifications = SignatureVerification::whereHas('signature', function ($q) use ($userId) {
-            $q->where('signer_id', $userId);
-        })->where('result', true)->count();
-
-        $publicVerifications = SignatureVerification::whereHas('signature', function ($q) use ($userId) {
-            $q->where('signer_id', $userId);
-        })->where('is_public_verification', true)->count();
+        $totalVerifications = (int) $verificationStats->total;
+        $successfulVerifications = (int) $verificationStats->successful;
+        $publicVerifications = (int) $verificationStats->public_count;
 
         // Activité récente (dernières signatures)
-        $recentActivity = Signature::with(['file', 'signer'])
+        $recentActivity = Signature::with(['file:id,original_file_name'])
             ->where('signer_id', $userId)
+            ->select(['id', 'file_id', 'validation_status', 'signed_at', 'is_valid'])
             ->latest('signed_at')
             ->limit(5)
             ->get()
             ->map(function ($sig) {
                 return [
                     'id' => $sig->id,
-                    'file_name' => $sig->file->original_file_name,
+                    'file_name' => $sig->file?->original_file_name,
                     'status' => $sig->validation_status,
                     'signed_at' => $sig->signed_at?->diffForHumans(),
                     'is_valid' => $sig->is_valid,
@@ -90,13 +111,6 @@ class DashboardController extends Controller
             ->select('algorithm_used', DB::raw('count(*) as total'))
             ->groupBy('algorithm_used')
             ->get();
-
-        // Expiration proche (clés qui expirent dans 30 jours)
-        $expiringKeys = KeyPair::where('user_id', $userId)
-            ->whereNotNull('valid_to')
-            ->where('valid_to', '<=', now()->addDays(30))
-            ->where('valid_to', '>', now())
-            ->count();
 
         // Taux de succès des vérifications
         $verificationSuccessRate = $totalVerifications > 0

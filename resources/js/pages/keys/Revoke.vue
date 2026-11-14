@@ -6,6 +6,7 @@ import { Ban, Copy, Eye, KeyRound } from 'lucide-vue-next';
 import { route as ziggyRoute } from 'ziggy-js';
 import type { Config } from 'ziggy-js';
 
+import Pagination, { type PaginationMeta } from '@/components/Pagination.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -42,8 +43,9 @@ interface RevokedKey {
     fingerprint: string;
 }
 
-defineProps<{
+const props = defineProps<{
     keys: RevokedKey[];
+    pagination?: PaginationMeta | null;
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -74,8 +76,10 @@ const copyToClipboard = (text: string) => {
                 <CardHeader>
                     <CardTitle>Revoked Keys</CardTitle>
                     <CardDescription>
-                        {{ keys.length }} key{{
-                            keys.length !== 1 ? 's' : ''
+                        {{ props.pagination?.total ?? keys.length }} key{{
+                            (props.pagination?.total ?? keys.length) !== 1
+                                ? 's'
+                                : ''
                         }}
                         revoked
                     </CardDescription>
@@ -161,6 +165,8 @@ const copyToClipboard = (text: string) => {
                             </TableRow>
                         </TableBody>
                     </Table>
+
+                    <Pagination :pagination="pagination" />
                 </CardContent>
             </Card>
         </div>

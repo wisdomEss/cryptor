@@ -8,7 +8,6 @@ use App\Models\SignatureVerification;
 use App\Services\Keys\KeyFingerprint;
 use App\Services\Verification\SignatureVerifier;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class PublicSignaturesController extends Controller
@@ -112,9 +111,14 @@ class PublicSignaturesController extends Controller
                 ]);
             }
 
+            // La signature est réellement recontrôlée (empreinte du document + signature
+            // cryptographique) : `is_valid` est un drapeau posé à la main par le signataire,
+            // il ne peut pas servir de réponse à un tiers.
+            $recheck = $this->verifier->recheck($signature);
+
             $details = [
-                'signature_valid' => $signature->is_valid,
-                'document_integrity' => true,
+                'signature_valid' => $recheck['signature_valid'],
+                'document_integrity' => $recheck['document_integrity'],
                 // Recalculé à chaque appel : une clé révoquée depuis apparaît comme telle.
                 'certificate_trust' => $this->verifier->certificateTrust($signature->keyPair?->certificate_data),
                 'timestamp' => $this->verifier->timestampStatus($signature),
@@ -126,6 +130,10 @@ class PublicSignaturesController extends Controller
                 'verification_date' => $verification->verified_at?->toIso8601String(),
             ];
 
+            if (! $recheck['recomputed']) {
+                $details['warning'] = 'Le document n\'est plus conservé : l\'intégrité n\'a pas pu être recalculée.';
+            }
+
             if ($signature->keyPair && $signature->keyPair->certificate_data) {
                 $details['certificate_info'] = [
                     'issuer' => $signature->keyPair->certificate_issuer ?? 'Inconnu',
@@ -136,9 +144,16 @@ class PublicSignaturesController extends Controller
 
             // Le rejeu d'un token ne modifie pas l'enregistrement d'origine (IP et navigateur du vérificateur initial).
 
+            $success = $recheck['signature_valid'] && $recheck['document_integrity'];
+
             return response()->json([
-                'success' => $signature->is_valid && $verification->result,
-                'message' => $this->verifier->message((bool) $signature->is_valid, true, true, self::LOCALE),
+                'success' => $success,
+                'message' => $this->verifier->message(
+                    $success,
+                    $recheck['document_integrity'],
+                    $recheck['signature_valid'],
+                    self::LOCALE
+                ),
                 'details' => $details,
                 'verification_id' => $verification->id,
                 'token' => $request->token,
@@ -175,8 +190,9 @@ class PublicSignaturesController extends Controller
         $startTime = microtime(true);
 
         try {
-            DB::beginTransaction();
-
+            // Pas de transaction : hacher un fichier de 10 Mo puis le vérifier avec OpenSSL
+            // prend du temps, et immobilisait une connexion de base pendant tout ce temps
+            // sur un point d'entrée public. La journalisation est une écriture unique.
             $file = $request->file('file');
             $signatureFile = $request->file('signature_file');
 
@@ -187,12 +203,8 @@ class PublicSignaturesController extends Controller
                 ? $this->verifyInternalDocument($fileSigned, $file, $signatureFile, $request, $startTime)
                 : $this->verifyExternalDocument($file, $signatureFile, $request, $startTime);
 
-            DB::commit();
-
             return response()->json($result);
         } catch (\Exception $e) {
-            DB::rollBack();
-
             // Résultat attendu (document inconnu ou modifié, signature illisible...) : ce n'est pas
             // une panne. Seules les erreurs inattendues sont journalisées et renvoient un 500.
             $expected = $e instanceof UserFacingException;

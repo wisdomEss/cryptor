@@ -1,7 +1,6 @@
 <!-- resources/js/pages/verifications/Index.vue -->
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
-import { usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import {
     ShieldCheck,
     History,
@@ -20,6 +19,7 @@ import { ref } from 'vue';
 import { route as ziggyRoute } from 'ziggy-js';
 import type { Config } from 'ziggy-js';
 
+import Pagination from '@/components/Pagination.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -94,6 +94,7 @@ interface Verification {
 const props = defineProps<{
     verifications: Verification[];
     filters?: {
+        search?: string;
         result?: string;
         type?: string;
         date_from?: string;
@@ -123,7 +124,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 // États des filtres
-const search = ref('');
+const search = ref(props.filters?.search || '');
 const resultFilter = ref(props.filters?.result || 'all');
 const typeFilter = ref(props.filters?.type || 'all');
 const dateFrom = ref(props.filters?.date_from || '');
@@ -142,10 +143,14 @@ const getCurrentParams = () => {
     return params;
 };
 
-// Appliquer les filtres
+// Appliquer les filtres : visite Inertia (seules les données changent), pas un
+// rechargement complet de la page et de ses assets.
 const applyFilters = () => {
-    const params = getCurrentParams();
-    window.location.href = route('verifications.index', params);
+    router.get(route('verifications.index'), getCurrentParams(), {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+    });
 };
 
 // Réinitialiser les filtres
@@ -651,92 +656,11 @@ const getTypeIcon = (type: string, isPublic: boolean) => {
                     </Table>
                 </CardContent>
 
-                <!-- Pagination Simple -->
                 <CardFooter
                     v-if="pagination && pagination.last_page > 1"
-                    class="border-t px-6 py-4"
+                    class="px-6 py-4"
                 >
-                    <div class="flex w-full items-center justify-between">
-                        <div class="text-sm text-muted-foreground">
-                            Showing page {{ pagination.current_page }} of
-                            {{ pagination.last_page }}
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <!-- Previous Button -->
-                            <Button
-                                v-if="pagination.current_page > 1"
-                                variant="outline"
-                                size="sm"
-                                as-child
-                            >
-                                <Link
-                                    :href="
-                                        route('verifications.index', {
-                                            ...getCurrentParams(),
-                                            page: pagination.current_page - 1,
-                                        })
-                                    "
-                                >
-                                    Previous
-                                </Link>
-                            </Button>
-                            <Button v-else variant="outline" size="sm" disabled>
-                                Previous
-                            </Button>
-
-                            <!-- Page Numbers -->
-                            <div class="flex items-center gap-1">
-                                <Button
-                                    v-for="pageNum in pagination.last_page"
-                                    :key="pageNum"
-                                    :variant="
-                                        pageNum === pagination.current_page
-                                            ? 'default'
-                                            : 'outline'
-                                    "
-                                    size="sm"
-                                    class="min-w-[32px]"
-                                    as-child
-                                >
-                                    <Link
-                                        :href="
-                                            route('verifications.index', {
-                                                ...getCurrentParams(),
-                                                page: pageNum,
-                                            })
-                                        "
-                                    >
-                                        {{ pageNum }}
-                                    </Link>
-                                </Button>
-                            </div>
-
-                            <!-- Next Button -->
-                            <Button
-                                v-if="
-                                    pagination.current_page <
-                                    pagination.last_page
-                                "
-                                variant="outline"
-                                size="sm"
-                                as-child
-                            >
-                                <Link
-                                    :href="
-                                        route('verifications.index', {
-                                            ...getCurrentParams(),
-                                            page: pagination.current_page + 1,
-                                        })
-                                    "
-                                >
-                                    Next
-                                </Link>
-                            </Button>
-                            <Button v-else variant="outline" size="sm" disabled>
-                                Next
-                            </Button>
-                        </div>
-                    </div>
+                    <Pagination :pagination="pagination" />
                 </CardFooter>
             </Card>
         </div>

@@ -63,7 +63,13 @@ const { isCurrentUrl } = useCurrentUrl();
             <SidebarMenuItem v-for="item in items" :key="item.title">
                 <SidebarMenuButton
                     as-child
-                    :is-active="isCurrentUrl(item.href) || (item.children?.some(child => isCurrentUrl(child.href)) ?? false)"
+                    :is-active="
+                        isCurrentUrl(item.href) ||
+                        (item.children?.some((child) =>
+                            isCurrentUrl(child.href),
+                        ) ??
+                            false)
+                    "
                     :tooltip="item.title"
                 >
                     <Link :href="item.href">
@@ -73,8 +79,14 @@ const { isCurrentUrl } = useCurrentUrl();
                 </SidebarMenuButton>
 
                 <!-- Sous-menu -->
-                <SidebarMenu v-if="item.children && item.children.length" class="ml-4">
-                    <SidebarMenuItem v-for="child in item.children" :key="child.title">
+                <SidebarMenu
+                    v-if="item.children && item.children.length"
+                    class="ml-4"
+                >
+                    <SidebarMenuItem
+                        v-for="child in item.children"
+                        :key="child.title"
+                    >
                         <SidebarMenuButton
                             as-child
                             :is-active="isCurrentUrl(child.href)"

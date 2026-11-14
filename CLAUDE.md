@@ -192,3 +192,59 @@ Cause : `URL::forceScheme('https')` ne change que les URLs *générées*. Un lie
 - `SignedLinksBehindProxyTest` couvre : requête en HTTP simple, proxy non reconnu, proxy de confiance annonçant « http » et port 80 ; et vérifie qu'un lien **falsifié** ou **expiré** reste refusé.
 - Toute fonction qui dépend de l'URL de la requête (liens signés, `url()->current()`, `route()->is()` sur URL complète) doit rester cohérente avec le schéma servi publiquement : ne pas retirer ce middleware.
 - Dépannage immédiat d'un compte bloqué : `php artisan cryptor:verify-user adresse@exemple.org`.
+
+### Audit performance et sécurité (2026-11-14)
+
+260 tests (SQLite), pint/eslint/vue-tsc verts. Corrigé :
+
+**Performance**
+- **N+1 sur la liste des signatures** : `SignatureListResource` faisait un `COUNT` par ligne (`verifications()->count()`) → `withCount('verifications')`. La liste ne sélectionne plus `signature_value` (le CMS, plusieurs Ko par ligne, inutilisé par `signatures/Index.vue`) et ses relations sont limitées aux colonnes affichées — `with(['keyPair'])` chargeait la clé privée chiffrée de chaque clé. Garde-fou : `tests/Feature/QueryBudgetTest.php` compare le nombre de requêtes à 3 et à 12 signatures.
+- **Liste de révocation recalculée à chaque vérification** : `CertificateAuthority::revokedSerials()` relisait toutes les clés révoquées de la plateforme et faisait une vérification OpenSSL par clé — y compris sur `/pki/revocations.json`, **non authentifié**. Désormais en cache 10 min (`cryptor:ca:revoked-serials`), invalidé par le modèle `KeyPair` (`saved`/`deleted`) pour qu'aucun chemin d'écriture ne l'oublie. Le certificat de l'AC et sa clé publique sont mémorisés pour la durée de la requête (ils étaient relus et reparsés à chaque certificat testé).
+- **Tableau de bord** : ~20 requêtes → 11 (agrégats conditionnels `sum(case when ...)` en un passage par table, au lieu de trois sous-requêtes `whereHas` identiques sur les vérifications ; colonnes réduites). Budget vérifié par test.
+- **Document entier chargé en mémoire à la vérification** : `verifyInternal` faisait `file_get_contents` puis `CmsService::verifyContent` recopiait tout dans un fichier temporaire (3 passes + une copie pour 10 Mo). `SignatureVerifier::verifySignatureFile()` laisse OpenSSL lire le fichier déjà sur le disque ; `verifySignature(string $content)` reste pour les anciens formats et les tests.
+
+**Sécurité**
+- **`is_active` et `account_locked_until` n'étaient lus nulle part** : un compte désactivé ou verrouillé ouvrait une session normalement. `Fortify::authenticateUsing` (dans `FortifyServiceProvider`) vérifie le mot de passe dans un `Timebox` (pas de fuite par le temps de réponse), puis l'état du compte, **avant** le second facteur.
+- **Une signature révoquée pouvait être « revalidée »** (`PATCH signatures/{id}/validate` remettait `is_valid` à vrai) : `SignatureManager::validate` refuse maintenant une signature révoquée, et `SignatureController::act` laisse passer le message d'une `UserFacingException` au lieu du message générique.
+- **La vérification publique par token ne vérifiait rien** : elle renvoyait `signature_valid` = drapeau `is_valid` (posé à la main par le signataire) et `document_integrity` = `true` codé en dur. `SignatureVerifier::recheck()` recalcule l'empreinte du document conservé et la signature CMS ; une signature révoquée est invalide ; si le document n'est plus conservé, la réponse le dit (`warning`) au lieu d'affirmer l'intégrité.
+- **Fuite de données dans les props Inertia** : `HandleInertiaRequests::share` envoyait le modèle `User` entier à chaque page (rôle, téléphone, préférences, `failed_login_attempts`, `account_locked_until`). Réduit à `id`, `name`, `email`, `email_verified_at`, `two_factor_enabled`.
+- **CSP** : le filtre des sources supplémentaires acceptait des jokers (`https://*.exemple.org`, `https://*.com`) alors que l'intention documentée était un hôte précis ; la regex n'accepte plus de `*`.
+
+La dette que cet audit avait laissée de côté a été traitée juste après (voir la section suivante).
+
+### Chantier « tout corriger, tout optimiser » (2026-11-14, suite de l'audit)
+
+275 tests (SQLite), pint/eslint/vue-tsc/build verts. Reprise intégrale des points laissés ouverts, plus ce que leur correction a mis au jour.
+
+**Listes paginées (serveur) et composant unique**
+- `keys.index`, `keys.revoked` et les quatre listes de `signatures.*` renvoyaient **toutes** les lignes. Elles paginent maintenant (15/page, `PER_PAGE` sur chaque contrôleur) et n'envoient que les colonnes affichées.
+- Les compteurs d'en-tête (total, actives, expirant sous 30 j, valides, en attente) étaient calculés **en JavaScript sur le tableau reçu** : ils ne pouvaient donc pas survivre à la pagination. Ils sont désormais calculés en SQL (agrégats conditionnels) et passés dans une prop `stats`, indépendante de la page affichée.
+- `resources/js/components/Pagination.vue` : barre de pagination partagée (clés, clés révoquées, signatures, vérifications). Elle construit ses liens depuis l'URL courante (`page.url`), donc conserve les filtres et fonctionne sans connaître le nom de route. Elle remplace les 87 lignes dupliquées de `verifications/Index.vue`, qui rendait **un bouton par page** (500 pages = 500 boutons) ; la fenêtre est maintenant de ±2 pages avec « … ».
+- `verifications/Index.vue` : les filtres faisaient `window.location.href = ...` (rechargement complet de la page et des assets) → visite Inertia (`router.get`, `preserveState`). Au passage, le champ de recherche ne se rappelait plus de sa valeur (`filters.search` n'était pas relu).
+
+**Index manquants** (`2026_11_14_100000_add_missing_indexes_for_list_queries`)
+- `signatures_verifications.verified_at` : le tri de la liste des vérifications (`latest('verified_at')`) ne pouvait pas utiliser l'index composite `(result, verified_at)` sans filtre sur `result` → tri de toute la table à chaque page.
+- `signatures.revoked_at` (liste des signatures révoquées) et `key_pairs(user_id, is_revoked)` (clés révoquées d'un utilisateur, liste de révocation de l'AC).
+
+**Journal d'audit de la vérification publique** (`config/cryptor.php` → `public_verification`)
+- `dedupe_minutes` (10) : une demande identique (même document, même signature, même résultat, même IP) répétée dans l'intervalle réutilise la ligne existante et son token, au lieu d'en créer une. N'importe qui pouvait sinon faire grossir indéfiniment la table depuis un point d'entrée non authentifié. `0` = journaliser chaque appel.
+- `retention_days` (365) : `php artisan cryptor:prune-verifications [--days=N] [--dry-run]`, planifié chaque nuit à 3 h 30 (`routes/console.php`, nécessite `schedule:run` côté serveur). Ne purge **que** les vérifications publiques, par lots de 1000 ; les vérifications internes (signature, validation, révocation) sont la trace des actions des utilisateurs et ne sont jamais supprimées.
+- Le token est généré **avant** l'insertion : une écriture au lieu d'un INSERT suivi d'un UPDATE.
+- `verifyByUpload` n'ouvre plus de transaction SQL autour du hachage et de la vérification OpenSSL (une connexion immobilisée pendant tout le traitement d'un fichier de 10 Mo, sans authentification). La journalisation est une écriture unique, donc atomique par elle-même.
+
+**Fuite de données sur `verifications/Show`**
+- Le contrôleur renvoyait `$verification` **entier avec ses relations** : les modèles `User` complets du signataire et du vérificateur partaient au navigateur (rôle, téléphone, préférences, `failed_login_attempts`, `account_locked_until`), ainsi que le chemin de stockage du document (`file_path`). Remplacé par `App\Http\Resources\VerificationDetailResource`. Même traitement sur la liste, qui chargeait `signature_value` (le conteneur CMS) pour chacune des 15 lignes affichées alors qu'elle n'en montre que le nom de fichier.
+
+**Certificat importé qui usurpe l'AC**
+- `certificate_issuer` est affiché tel quel : un `.p12` fabriqué ailleurs pouvait s'annoncer « CRYPTOR Internal CA » (le statut restait `untrusted`, mais le libellé trompait le lecteur). `KeyBackupService::import` refuse désormais un certificat dont le CN d'émetteur est celui de l'AC interne sans en porter la signature.
+
+**Code mort supprimé**
+- `User::canSign()` et la colonne `is_email_verified` (doublon jamais écrit de `email_verified_at`, qui rendait `canSign()` toujours faux) : migration `2026_11_14_100100_drop_is_email_verified_from_users_table`.
+
+**Divers**
+- `GET /pki/ca.crt` → `Cache-Control: public, max-age=3600` ; `/pki/revocations.json` → `max-age=60` (contenus publics, signés, régénérés à chaque appel jusqu'ici).
+- `keys.show` et `signatures.show` comptent via `loadCount`/`withCount` au lieu d'une requête à la volée dans la Resource.
+
+**Tests ajoutés** : `PaginationTest` (pagination, compteurs serveur, cloisonnement par utilisateur, absence du CMS dans les listes), `AuditJournalTest` (déduplication, purge, dry-run, document inconnu jamais journalisé), `SecurityHardeningTest::test_verification_detail_does_not_expose_account_internals`, `KeyBackupTest::test_import_rejects_a_certificate_that_falsely_claims_our_issuer`.
+
+**Reste volontairement hors périmètre** : PAdES (signature incorporée au PDF) ; la réutilisation d'un `FileSigned` quand le même contenu est signé deux fois ; la montée de version majeure des dépendances (Laravel 13, Inertia 3…). Les migrations de ce chantier n'ont pas pu être rejouées sur MySQL en local (pas de serveur disponible) : c'est le job `test (MySQL 8)` de la CI qui les valide.

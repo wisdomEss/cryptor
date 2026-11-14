@@ -38,8 +38,17 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            // Seuls les champs réellement affichés (en-tête, page profil) : partager le modèle
+            // entier envoyait à chaque page le rôle, le téléphone, les préférences, le nombre
+            // d'échecs de connexion et la date de verrouillage du compte.
             'auth' => [
-                'user' => $request->user(),
+                'user' => $request->user() ? [
+                    'id' => $request->user()->id,
+                    'name' => $request->user()->name,
+                    'email' => $request->user()->email,
+                    'email_verified_at' => $request->user()->email_verified_at?->toIso8601String(),
+                    'two_factor_enabled' => (bool) $request->user()->two_factor_secret,
+                ] : null,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

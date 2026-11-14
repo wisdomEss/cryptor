@@ -92,6 +92,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Vérification publique (journal d'audit)
+    |--------------------------------------------------------------------------
+    |
+    | `/api/public/verify` est ouvert à tous : chaque appel écrit une ligne dans
+    | `signatures_verifications`. Deux garde-fous :
+    |
+    | - `dedupe_minutes` : une demande identique (même document, même signataire,
+    |   même résultat, même IP) répétée dans cet intervalle réutilise la ligne
+    |   existante au lieu d'en créer une (0 = journaliser chaque appel) ;
+    | - `retention_days` : `php artisan cryptor:prune-verifications` (planifié
+    |   chaque nuit) supprime les vérifications publiques plus anciennes.
+    |   0 = ne rien supprimer. Les vérifications internes ne sont jamais purgées.
+    |
+    */
+    'public_verification' => [
+        'dedupe_minutes' => (int) env('CRYPTOR_PUBLIC_VERIFY_DEDUPE_MINUTES', 10),
+        'retention_days' => (int) env('CRYPTOR_PUBLIC_VERIFY_RETENTION_DAYS', 365),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Sources supplémentaires de la Content-Security-Policy (production)
     |--------------------------------------------------------------------------
     |

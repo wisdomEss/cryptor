@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Verifications;
 
 use App\Exceptions\UserFacingException;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\VerificationDetailResource;
 use App\Models\Signature;
 use App\Models\SignatureVerification;
 use App\Services\Keys\KeyFingerprint;
@@ -22,12 +23,21 @@ class VerificationController extends Controller
      */
     public function index(Request $request)
     {
-        $query = SignatureVerification::with([
-            'signature' => function ($q) {
-                $q->with(['file', 'signer']);
-            },
-            'verifier',
-        ])
+        $query = SignatureVerification::query()
+            // Colonnes explicites : la liste n'affiche qu'un nom de fichier et un nom de
+            // signataire, mais chargeait la signature entière — dont `signature_value`,
+            // le conteneur CMS, pour chacune des 15 lignes.
+            ->select([
+                'id', 'signature_id', 'verifier_id', 'result', 'verification_type',
+                'is_public_verification', 'verified_at', 'verification_duration_ms',
+                'verification_token',
+            ])
+            ->with([
+                'signature:id,file_id,signer_id',
+                'signature.file:id,original_file_name,uploader_id',
+                'signature.signer:id,name',
+                'verifier:id,name,email',
+            ])
             ->whereHas('signature', function ($q) {
                 $q->where('signer_id', Auth::id()) // Verifications of user's signatures
                     ->orWhereHas('file', function ($subQ) {
@@ -221,7 +231,9 @@ class VerificationController extends Controller
      */
     private function getRecentSignatures()
     {
-        return Signature::with(['file', 'signer'])
+        return Signature::query()
+            ->select(['id', 'file_id', 'signer_id', 'signed_at'])
+            ->with(['file:id,original_file_name,uploader_id', 'signer:id,name'])
             ->where(function ($q) {
                 $q->where('signer_id', Auth::id())
                     ->orWhereHas('file', fn ($f) => $f->where('uploader_id', Auth::id()));
@@ -231,9 +243,9 @@ class VerificationController extends Controller
             ->get()
             ->map(fn ($signature) => [
                 'id' => $signature->id,
-                'file_name' => $signature->file->original_file_name,
-                'signer_name' => $signature->signer->name,
-                'signed_at' => $signature->signed_at->diffForHumans(),
+                'file_name' => $signature->file?->original_file_name,
+                'signer_name' => $signature->signer?->name,
+                'signed_at' => $signature->signed_at?->diffForHumans(),
             ]);
     }
 
@@ -244,16 +256,16 @@ class VerificationController extends Controller
     {
         $verification = SignatureVerification::with([
             'signature.file',
-            'signature.signer',
-            'signature.keyPair',
-            'verifier',
+            'signature.signer:id,name,email',
+            'signature.keyPair:id,key_name,algorithm_used,key_size,public_key',
+            'verifier:id,name,email',
         ])->findOrFail($id);
 
         // SignatureVerificationPolicy : auteur de la vérification, signataire ou uploader (404 sinon).
         $this->authorize('view', $verification);
 
         return inertia('verifications/Show', [
-            'verification' => $verification,
+            'verification' => VerificationDetailResource::make($verification)->resolve(),
         ]);
     }
 }

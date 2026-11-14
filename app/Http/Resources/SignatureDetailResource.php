@@ -30,7 +30,7 @@ class SignatureDetailResource extends JsonResource
             'signing_device_info' => $this->signing_device_info,
             'nonce_value' => $this->nonce_value,
             'timestamp_token' => $this->timestamp_token,
-            'verification_count' => $this->verifications()->count(),
+            'verification_count' => $this->verifications_count ?? $this->verifications()->count(),
 
             'file' => [
                 'id' => $this->file->id,

@@ -86,7 +86,6 @@ interface Signature {
         id: number;
         original_file_name: string;
         file_name: string;
-        file_path: string;
         file_hash: string;
         file_size: number;
         mime_type: string;
@@ -292,7 +291,6 @@ const safeSignature = computed(() => {
                 id: 0,
                 original_file_name: 'Unknown',
                 file_name: 'Unknown',
-                file_path: '',
                 file_hash: '',
                 file_size: 0,
                 mime_type: 'Unknown',

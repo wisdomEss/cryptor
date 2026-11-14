@@ -12,6 +12,7 @@ use App\Services\Crypto\TimestampAuthority;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Logique de vérification des signatures, partagée par la vérification
@@ -63,6 +64,46 @@ class SignatureVerifier
         return self::MESSAGES[$locale][$key] ?? self::MESSAGES['en'][$key] ?? $key;
     }
 
+    /**
+     * Journalise une vérification en **une seule** écriture (le token est généré avant
+     * l'insertion, au lieu d'un INSERT suivi d'un UPDATE).
+     *
+     * Vérification publique : si la même personne vient de demander exactement la même
+     * chose (même document, même signature, même résultat) il n'y a rien à ajouter au
+     * journal — on renvoie la ligne existante avec son token. Sans cela, n'importe qui
+     * pouvait faire grossir indéfiniment la table d'audit depuis un point d'entrée
+     * non authentifié.
+     */
+    private function record(array $attributes, bool $withToken): SignatureVerification
+    {
+        if (($attributes['is_public_verification'] ?? false) === true) {
+            $minutes = (int) config('cryptor.public_verification.dedupe_minutes');
+
+            $existing = $minutes > 0
+                ? SignatureVerification::query()
+                    ->where('is_public_verification', true)
+                    ->where('signature_id', $attributes['signature_id'])
+                    ->where('verified_hash', $attributes['verified_hash'])
+                    ->where('result', $attributes['result'])
+                    ->where('verifier_ip', $attributes['verifier_ip'])
+                    ->where('verified_at', '>=', now()->subMinutes($minutes))
+                    ->whereNotNull('verification_token')
+                    ->latest('verified_at')
+                    ->first()
+                : null;
+
+            if ($existing) {
+                return $existing;
+            }
+        }
+
+        if ($withToken) {
+            $attributes['verification_token'] = bin2hex(random_bytes(32));
+        }
+
+        return SignatureVerification::create($attributes);
+    }
+
     /** Message de synthèse d'une vérification de document interne. */
     public function message(bool $success, bool $documentIntegrity, bool $signatureValid, string $locale = 'en'): string
     {
@@ -108,7 +149,7 @@ class SignatureVerifier
 
         $currentHash = hash_file('sha256', $file->getRealPath());
         $documentIntegrity = hash_equals($fileSigned->file_hash, $currentHash);
-        $signatureValid = $this->verifySignature($signature, file_get_contents($file->getRealPath()));
+        $signatureValid = $this->verifySignatureFile($signature, $file->getRealPath());
         $keyValid = (bool) ($signature->keyPair && $signature->keyPair->isValid());
         $success = $documentIntegrity && $signatureValid && $keyValid;
 
@@ -117,7 +158,7 @@ class SignatureVerifier
         $certificateTrust = $this->certificateTrust($signature->keyPair?->certificate_data);
         $timestamp = $this->timestampStatus($signature);
 
-        $verification = SignatureVerification::create([
+        $verification = $this->record([
             'signature_id' => $signature->id,
             'verifier_id' => $verifierId,
             'verified_hash' => $currentHash,
@@ -139,11 +180,7 @@ class SignatureVerifier
             'verifier_user_agent' => $request->userAgent(),
             'verification_duration_ms' => $this->elapsedMs($startTime),
             'is_public_verification' => $isPublic,
-        ]);
-
-        if ($withToken) {
-            $verification->generateVerificationToken();
-        }
+        ], $withToken);
 
         return [
             'verification' => $verification,
@@ -194,7 +231,7 @@ class SignatureVerifier
 
             if ($publicKey) {
                 $signatureValid = $this->opensslVerify(
-                    file_get_contents($file->getRealPath()),
+                    (string) file_get_contents($file->getRealPath()),
                     base64_decode($data['signature'], true) ?: '',
                     $publicKey
                 );
@@ -211,7 +248,7 @@ class SignatureVerifier
         $documentIntegrity = isset($data['file_hash']) ? hash_equals((string) $data['file_hash'], $fileHash) : true;
         $success = $signatureValid && $documentIntegrity;
 
-        $verification = SignatureVerification::create([
+        $verification = $this->record([
             'signature_id' => null,
             'verifier_id' => $verifierId,
             'verified_hash' => $fileHash,
@@ -230,11 +267,7 @@ class SignatureVerifier
             'verifier_user_agent' => $request->userAgent(),
             'verification_duration_ms' => $this->elapsedMs($startTime),
             'is_public_verification' => $isPublic,
-        ]);
-
-        if ($withToken) {
-            $verification->generateVerificationToken();
-        }
+        ], $withToken);
 
         return [
             'verification' => $verification,
@@ -256,6 +289,21 @@ class SignatureVerifier
      */
     public function verifySignature(Signature $signature, string $content): bool
     {
+        return $this->checkSignature($signature, null, $content);
+    }
+
+    /**
+     * Même contrôle, mais à partir d'un fichier : pour une signature CMS (le cas courant),
+     * OpenSSL lit le document directement sur le disque. On évite ainsi de charger tout le
+     * document en mémoire puis de le recopier dans un fichier temporaire.
+     */
+    public function verifySignatureFile(Signature $signature, string $path): bool
+    {
+        return $this->checkSignature($signature, $path, null);
+    }
+
+    private function checkSignature(Signature $signature, ?string $path, ?string $content): bool
+    {
         try {
             $publicKey = $signature->keyPair?->public_key;
 
@@ -267,10 +315,12 @@ class SignatureVerifier
 
             // Signature CMS standard (RFC 5652) : le certificat embarqué doit être celui de la clé enregistrée.
             if ($this->cms->looksLikeCms($value)) {
-                return $this->verifyCmsAgainstKey($value, $content, $publicKey);
+                return $this->verifyCmsAgainstKey($value, $path, $content, $publicKey);
             }
 
-            // Anciennes signatures : structure JSON maison ou signature base64 brute.
+            // Anciennes signatures (JSON ou base64 brut) : le contenu est nécessaire en mémoire.
+            $content ??= (string) file_get_contents((string) $path);
+
             $json = json_decode($value, true);
 
             if (is_array($json) && isset($json['signature'])) {
@@ -289,6 +339,44 @@ class SignatureVerifier
 
             return false;
         }
+    }
+
+    /**
+     * Recontrôle une signature enregistrée à partir du document conservé sur le disque :
+     * empreinte du document et signature cryptographique, recalculées à l'instant.
+     *
+     * Sert la vérification publique par token, qui ne doit pas se contenter du drapeau
+     * `is_valid` enregistré en base (il est posé à la main par le signataire).
+     *
+     * @return array{signature_valid: bool, document_integrity: bool, recomputed: bool}
+     */
+    public function recheck(Signature $signature): array
+    {
+        // Une signature révoquée est invalide, quoi que disent les empreintes.
+        if ($signature->revoked_at !== null || $signature->validation_status === 'revoked') {
+            return ['signature_valid' => false, 'document_integrity' => false, 'recomputed' => true];
+        }
+
+        $file = $signature->file;
+        $path = $file?->getRawOriginal('file_path');
+
+        // Document plus conservé (expiré ou supprimé) : on ne peut plus rien recalculer,
+        // on s'en tient à l'état enregistré et on le signale à l'appelant.
+        if (! $file || ! $path || ! Storage::disk('local')->exists($path)) {
+            return [
+                'signature_valid' => (bool) $signature->is_valid,
+                'document_integrity' => false,
+                'recomputed' => false,
+            ];
+        }
+
+        $absolute = Storage::disk('local')->path($path);
+
+        return [
+            'signature_valid' => $this->verifySignatureFile($signature, $absolute),
+            'document_integrity' => hash_equals((string) $file->file_hash, (string) hash_file('sha256', $absolute)),
+            'recomputed' => true,
+        ];
     }
 
     /** Lit un fichier de signature externe : CMS/PKCS#7 (PEM ou DER), JSON ou signature binaire brute. */
@@ -362,9 +450,11 @@ class SignatureVerifier
     }
 
     /** CMS valide ET signé par la clé enregistrée (le certificat embarqué ne suffit pas). */
-    private function verifyCmsAgainstKey(string $cms, string $content, string $publicKey): bool
+    private function verifyCmsAgainstKey(string $cms, ?string $path, ?string $content, string $publicKey): bool
     {
-        $result = $this->cms->verifyContent($content, $cms);
+        $result = $path !== null
+            ? $this->cms->verify($path, $cms)
+            : $this->cms->verifyContent((string) $content, $cms);
 
         if (! $result['valid']) {
             return false;

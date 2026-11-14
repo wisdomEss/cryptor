@@ -32,7 +32,7 @@ class KeyDetailResource extends JsonResource
             'certificate_issuer' => $this->certificate_issuer,
             // Empreinte complète sur la page de détail ; les listes affichent son début.
             'fingerprint' => KeyFingerprint::of($this->public_key),
-            'signatures_count' => $this->signatures()->count(),
+            'signatures_count' => $this->signatures_count ?? $this->signatures()->count(),
         ];
     }
 }

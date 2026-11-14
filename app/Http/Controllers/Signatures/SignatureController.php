@@ -23,6 +23,9 @@ use Inertia\Inertia;
  */
 class SignatureController extends Controller
 {
+    /** Lignes par page des listes de signatures. */
+    private const PER_PAGE = 15;
+
     public function __construct(
         private readonly DocumentSigner $signer,
         private readonly SignatureManager $signatures,
@@ -53,14 +56,48 @@ class SignatureController extends Controller
     /** Les signatures de l'utilisateur connecté, éventuellement filtrées. */
     private function list($query, ?string $type = null)
     {
+        $query = $query->where('signer_id', auth()->id());
+
+        // Compteurs d'en-tête : calculés en SQL sur la liste entière, pas sur la page affichée.
+        $stats = (clone $query)
+            ->selectRaw('count(*) as total')
+            ->selectRaw("sum(case when validation_status = 'valid' then 1 else 0 end) as valid")
+            ->selectRaw("sum(case when validation_status = 'pending' then 1 else 0 end) as pending")
+            ->reorder()
+            ->first();
+
         $signatures = $query
-            ->with(['file', 'keyPair', 'signer'])
-            ->where('signer_id', auth()->id())
+            // Colonnes explicites : `signature_value` (le CMS, plusieurs Ko par ligne) n'a rien
+            // à faire dans une liste, et les relations ne chargent que ce qui est affiché
+            // (sans cela, chaque ligne traîne la clé privée chiffrée de son KeyPair).
+            ->select([
+                'id', 'file_id', 'key_pair_id', 'signer_id', 'signature_format', 'algorithm_used',
+                'signing_reason', 'signing_location', 'is_valid', 'validation_status',
+                'validation_message', 'signed_at', 'validated_at', 'revoked_at',
+            ])
+            ->with([
+                'file:id,original_file_name,file_size,mime_type,file_extension',
+                'keyPair:id,key_name,algorithm_used',
+                'signer:id,name,email',
+            ])
+            // Un seul COUNT groupé au lieu d'une requête par ligne.
+            ->withCount('verifications')
             ->latest('signed_at')
-            ->get();
+            ->paginate(self::PER_PAGE);
 
         return Inertia::render('signatures/Index', array_filter([
-            'signatures' => SignatureListResource::collection($signatures)->resolve(),
+            'signatures' => SignatureListResource::collection($signatures->items())->resolve(),
+            'pagination' => [
+                'current_page' => $signatures->currentPage(),
+                'last_page' => $signatures->lastPage(),
+                'per_page' => $signatures->perPage(),
+                'total' => $signatures->total(),
+            ],
+            'stats' => [
+                'total' => (int) $stats->total,
+                'valid' => (int) $stats->valid,
+                'pending' => (int) $stats->pending,
+            ],
             'type' => $type,
         ], fn ($value) => $value !== null));
     }
@@ -74,8 +111,8 @@ class SignatureController extends Controller
             'keyPair',
             'signer',
             'verifications' => fn ($query) => $query->latest('verified_at')->limit(10),
-            'verifications.verifier',
-        ])->findOrFail($id);
+            'verifications.verifier:id,name,email',
+        ])->withCount('verifications')->findOrFail($id);
 
         $this->authorize('view', $signature); // seul le signataire (404 sinon)
 
@@ -205,6 +242,9 @@ class SignatureController extends Controller
     {
         try {
             $operation();
+        } catch (UserFacingException $e) {
+            // Règle métier (signature révoquée, par exemple) : le message est affichable.
+            return back()->withErrors(['error' => $e->getMessage()]);
         } catch (\Throwable $e) {
             \Log::error("Signature {$action} failed", ['exception' => $e, 'signature_id' => $id]);
 

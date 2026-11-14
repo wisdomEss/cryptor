@@ -33,11 +33,29 @@ class CertificateAuthority
 
     public const INVALID = 'invalid';
 
+    /** Clé de cache de la liste des séries révoquées (voir revokedSerials()). */
+    private const REVOKED_CACHE_KEY = 'cryptor:ca:revoked-serials';
+
+    /**
+     * Mémorisation pour la durée de la requête : le certificat de l'AC et sa clé publique sont
+     * relus à chaque validation de chaîne, et une page de vérification en fait plusieurs.
+     */
+    private ?string $certificateCache = null;
+
+    /** @var \OpenSSLAsymmetricKey|false|null */
+    private $caPublicKeyCache = null;
+
+    private bool $existsCache = false;
+
     // ---------------------------------------------------------------- création
 
     public function exists(): bool
     {
-        return $this->disk()->exists($this->certPath()) && $this->disk()->exists($this->keyPath());
+        if ($this->existsCache) {
+            return true;
+        }
+
+        return $this->existsCache = $this->disk()->exists($this->certPath()) && $this->disk()->exists($this->keyPath());
     }
 
     /** Crée l'AC si elle n'existe pas encore (verrou : deux requêtes simultanées n'en créent qu'une). */
@@ -75,6 +93,11 @@ class CertificateAuthority
 
         $this->disk()->put($this->keyPath(), Crypt::encryptString($keyPem));
         $this->disk()->put($this->certPath(), $certPem);
+
+        $this->certificateCache = null;
+        $this->caPublicKeyCache = null;
+        $this->existsCache = false;
+        self::forgetRevocationCache();
     }
 
     // ------------------------------------------------------------------ accès
@@ -82,9 +105,13 @@ class CertificateAuthority
     /** Certificat de l'AC (PEM). */
     public function certificate(): string
     {
+        if ($this->certificateCache !== null) {
+            return $this->certificateCache;
+        }
+
         $this->ensure();
 
-        return (string) $this->disk()->get($this->certPath());
+        return $this->certificateCache = (string) $this->disk()->get($this->certPath());
     }
 
     /** Chemin absolu du certificat de l'AC (utile pour OpenSSL). */
@@ -205,9 +232,13 @@ class CertificateAuthority
             return false;
         }
 
-        $caKey = openssl_pkey_get_public($this->disk()->get($this->certPath()));
+        // La clé publique de l'AC est la même pour tout le processus : on ne relit pas le
+        // fichier et on ne la reparse pas à chaque certificat (revokedSerials en teste N).
+        if ($this->caPublicKeyCache === null) {
+            $this->caPublicKeyCache = openssl_pkey_get_public($this->certificate());
+        }
 
-        return $caKey && @openssl_x509_verify($certificatePem, $caKey) === 1;
+        return $this->caPublicKeyCache && @openssl_x509_verify($certificatePem, $this->caPublicKeyCache) === 1;
     }
 
     // -------------------------------------------------------------- révocation
@@ -219,16 +250,33 @@ class CertificateAuthority
      */
     public function revokedSerials(): array
     {
-        $serials = [];
+        // Sans cache, chaque vérification (y compris la route publique /pki/revocations.json)
+        // relisait toutes les clés révoquées de la plateforme et faisait une vérification
+        // OpenSSL par clé : coût linéaire sur un point d'entrée non authentifié.
+        $serials = Cache::remember(self::REVOKED_CACHE_KEY, now()->addMinutes(10), function () {
+            $serials = [];
 
-        KeyPair::where('is_revoked', true)->whereNotNull('certificate_data')->get()
-            ->each(function (KeyPair $key) use (&$serials) {
-                if ($this->isIssuedByCa($key->certificate_data) && ($serial = $this->serialOf($key->certificate_data))) {
-                    $serials[$serial] = $key->revoked_at;
-                }
-            });
+            KeyPair::query()
+                ->where('is_revoked', true)
+                ->whereNotNull('certificate_data')
+                ->select(['id', 'certificate_data', 'revoked_at'])
+                ->cursor()
+                ->each(function (KeyPair $key) use (&$serials) {
+                    if ($this->isIssuedByCa($key->certificate_data) && ($serial = $this->serialOf($key->certificate_data))) {
+                        $serials[$serial] = $key->revoked_at?->toIso8601String();
+                    }
+                });
 
-        return $serials;
+            return $serials;
+        });
+
+        return array_map(fn (?string $date) => $date ? Carbon::parse($date) : null, $serials);
+    }
+
+    /** À appeler dès qu'une clé est révoquée (ou dé-révoquée) : la liste est en cache. */
+    public static function forgetRevocationCache(): void
+    {
+        Cache::forget(self::REVOKED_CACHE_KEY);
     }
 
     /**

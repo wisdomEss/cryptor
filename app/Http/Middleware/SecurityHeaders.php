@@ -73,8 +73,9 @@ class SecurityHeaders
     {
         $extras = preg_split('/\s+/', trim((string) $extra), -1, PREG_SPLIT_NO_EMPTY);
 
-        // On n'accepte que des sources « sûres » : pas de jokers génériques ni de caractères de contrôle.
-        $extras = array_filter($extras, fn ($source) => preg_match('/^(https?:\/\/[A-Za-z0-9.*-]+(:\d+)?|wss:\/\/[A-Za-z0-9.-]+(:\d+)?)$/', $source) === 1 && $source !== 'https://*');
+        // On n'accepte qu'un hôte précis : aucun joker (`https://*.exemple.org` autorise tout
+        // sous-domaine, y compris celui d'un hébergeur partagé) ni caractère de contrôle.
+        $extras = array_filter($extras, fn ($source) => preg_match('/^(https?|wss):\/\/[A-Za-z0-9][A-Za-z0-9.-]*(:\d+)?$/', $source) === 1);
 
         return $directive.' '.implode(' ', [...$base, ...$extras]);
     }

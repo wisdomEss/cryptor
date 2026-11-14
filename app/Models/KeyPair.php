@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\Crypto\CertificateAuthority;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -53,6 +54,26 @@ class KeyPair extends Model
         // La clé privée ne doit jamais être stockée en clair en base.
         'private_key' => 'encrypted',
     ];
+
+    /**
+     * La liste des certificats révoqués est en cache (CertificateAuthority::revokedSerials).
+     * On l'invalide ici plutôt qu'à chaque appel métier : aucun chemin d'écriture ne peut
+     * l'oublier (révocation, réémission, suppression).
+     */
+    protected static function booted(): void
+    {
+        static::saved(function (KeyPair $key) {
+            if ($key->wasChanged(['is_revoked', 'certificate_data', 'revoked_at'])) {
+                CertificateAuthority::forgetRevocationCache();
+            }
+        });
+
+        static::deleted(function (KeyPair $key) {
+            if ($key->is_revoked) {
+                CertificateAuthority::forgetRevocationCache();
+            }
+        });
+    }
 
     // Relations
     public function user()

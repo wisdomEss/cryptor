@@ -12,7 +12,6 @@ class SignatureListResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'signature_value' => substr($this->signature_value, 0, 20).'...',
             'signature_format' => $this->signature_format,
             'algorithm_used' => $this->algorithm_used,
             'signing_reason' => $this->signing_reason,
@@ -23,7 +22,7 @@ class SignatureListResource extends JsonResource
             'signed_at' => $this->signed_at?->format('Y-m-d H:i'),
             'validated_at' => $this->validated_at?->format('Y-m-d H:i'),
             'revoked_at' => $this->revoked_at?->format('Y-m-d H:i'),
-            'verification_count' => $this->verifications()->count(),
+            'verification_count' => $this->verifications_count ?? $this->verifications()->count(),
             'file' => [
                 'id' => $this->file->id,
                 'original_file_name' => $this->file->original_file_name,

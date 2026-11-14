@@ -17,6 +17,7 @@ import {
 import { route as ziggyRoute } from 'ziggy-js';
 import type { Config } from 'ziggy-js';
 
+import Pagination, { type PaginationMeta } from '@/components/Pagination.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -73,8 +74,15 @@ interface Key {
     fingerprint: string;
 }
 
-defineProps<{
+const props = defineProps<{
     keys: Key[];
+    pagination?: PaginationMeta | null;
+    stats: {
+        total: number;
+        active: number;
+        expiring: number;
+        default_key_name: string | null;
+    };
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -186,13 +194,11 @@ const getStatusBadge = (key: Key) => {
                         <KeyRound class="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div class="text-2xl font-bold">{{ keys.length }}</div>
+                        <div class="text-2xl font-bold">
+                            {{ props.stats.total }}
+                        </div>
                         <p class="text-xs text-muted-foreground">
-                            Active:
-                            {{
-                                keys.filter((k) => k.is_active && !k.is_revoked)
-                                    .length
-                            }}
+                            Active: {{ props.stats.active }}
                         </p>
                     </CardContent>
                 </Card>
@@ -208,10 +214,7 @@ const getStatusBadge = (key: Key) => {
                     </CardHeader>
                     <CardContent>
                         <div class="text-2xl font-bold">
-                            {{
-                                keys.find((k) => k.is_default)?.key_name ||
-                                'None'
-                            }}
+                            {{ props.stats.default_key_name || 'None' }}
                         </div>
                         <p class="text-xs text-muted-foreground">
                             Used for new signatures by default
@@ -230,16 +233,7 @@ const getStatusBadge = (key: Key) => {
                     </CardHeader>
                     <CardContent>
                         <div class="text-2xl font-bold">
-                            {{
-                                keys.filter((k) => {
-                                    if (!k.valid_to) return false;
-                                    const daysLeft =
-                                        (new Date(k.valid_to).getTime() -
-                                            new Date().getTime()) /
-                                        (1000 * 3600 * 24);
-                                    return daysLeft > 0 && daysLeft < 30;
-                                }).length
-                            }}
+                            {{ props.stats.expiring }}
                         </div>
                         <p class="text-xs text-muted-foreground">
                             Keys expiring within 30 days
@@ -253,7 +247,9 @@ const getStatusBadge = (key: Key) => {
                 <CardHeader>
                     <CardTitle>All Keys</CardTitle>
                     <CardDescription>
-                        {{ keys.length }} key{{ keys.length !== 1 ? 's' : '' }}
+                        {{ props.stats.total }} key{{
+                            props.stats.total !== 1 ? 's' : ''
+                        }}
                         found
                     </CardDescription>
                 </CardHeader>
@@ -464,6 +460,8 @@ const getStatusBadge = (key: Key) => {
                             </TableRow>
                         </TableBody>
                     </Table>
+
+                    <Pagination :pagination="pagination" />
                 </CardContent>
             </Card>
         </div>

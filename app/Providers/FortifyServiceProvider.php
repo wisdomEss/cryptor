@@ -6,9 +6,12 @@ use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Illuminate\Support\Timebox;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
@@ -40,6 +43,55 @@ class FortifyServiceProvider extends ServiceProvider
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::createUsersUsing(CreateNewUser::class);
+        $this->configureAuthentication();
+    }
+
+    /**
+     * Authentification : mot de passe, puis état du compte.
+     *
+     * Les colonnes `is_active` et `account_locked_until` existaient mais n'étaient lues
+     * nulle part : un compte désactivé ou verrouillé pouvait ouvrir une session normalement.
+     * Le contrôle a lieu après la vérification du mot de passe (il ne révèle donc rien à
+     * qui ne le connaît pas) et avant le second facteur.
+     */
+    private function configureAuthentication(): void
+    {
+        Fortify::authenticateUsing(function (Request $request) {
+            $provider = Auth::guard(config('fortify.guard'))->getProvider();
+
+            // Timebox : le temps de réponse ne doit pas dire si l'adresse existe.
+            $user = (new Timebox)->call(function () use ($provider, $request) {
+                $user = $provider->retrieveByCredentials($request->only(Fortify::username(), 'password'));
+
+                if (! $user || ! $provider->validateCredentials($user, ['password' => $request->password])) {
+                    return null;
+                }
+
+                if (config('hashing.rehash_on_login', true) && method_exists($provider, 'rehashPasswordIfRequired')) {
+                    $provider->rehashPasswordIfRequired($user, ['password' => $request->password]);
+                }
+
+                return $user;
+            }, 200000);
+
+            if (! $user) {
+                return null; // Fortify répond « ces identifiants ne correspondent pas ».
+            }
+
+            if (! $user->is_active) {
+                throw ValidationException::withMessages([
+                    Fortify::username() => 'This account has been disabled.',
+                ]);
+            }
+
+            if ($user->account_locked_until && $user->account_locked_until->isFuture()) {
+                throw ValidationException::withMessages([
+                    Fortify::username() => 'This account is temporarily locked. Please try again later.',
+                ]);
+            }
+
+            return $user;
+        });
     }
 
     /**
